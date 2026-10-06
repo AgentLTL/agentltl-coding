@@ -126,16 +126,6 @@ def lint(ruleset: RuleSet, registry: Optional[SpecRegistry] = None) -> List[str]
                     out.append(f"{rule.id}: no command translates to '{tool}', so the formula "
                                f"never sees it.{hint}")
             continue
-        if rule.kind == "before" and rule.targets:
-            for target in _flatten(rule.targets[:1]):
-                for tool in target.tools:
-                    lists = sorted(arg for arg in target.variables
-                                   if props.get(tool, {}).get(arg, {}).get("type") == "array")
-                    if lists:
-                        out.append(f"{rule.id}: {tool}.{lists[0]} is a list, and a $variable "
-                                   "on the 'first' side is compared with the whole list, so "
-                                   f"`{tool.replace('_', ' ')} a b` never matches one file. "
-                                   "Use a single-valued argument (e.g. Read's file_path).")
         for target in _flatten(rule.targets):
             keys = set(target.with_) | set(target.where) | set(target.variables)
             for tool in target.tools:
