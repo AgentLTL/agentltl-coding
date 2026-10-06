@@ -1,0 +1,10 @@
+summary: Claude never signs commits, tags or notes (no Co-Authored-By, no Claude author).
+tags: [git]
+rules:
+  - id: no-claude-coauthor
+    never: [git_commit, git_commit_tree, git_tag, git_notes, git_merge, git_revert, git_cherry_pick]
+    where:
+      "*": ["*[Cc]o-[Aa]uthored-[Bb]y*", "*noreply@anthropic.com*", "*[Gg]enerated with*[Cc]laude*",
+            "*[Cc]laude <*", "user.name=*[Cc]laude*", "user.email=*anthropic.com*"]
+    why: Claude should not appear in git history.
+    fix: Drop the Co-Authored-By / "Generated with Claude Code" lines and commit as the user.

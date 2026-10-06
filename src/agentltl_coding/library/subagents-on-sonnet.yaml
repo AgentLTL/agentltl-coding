@@ -1,0 +1,11 @@
+summary: Subagents run on Sonnet (or Haiku), never on a bigger model.
+tags: [cost, agents]
+rules:
+  - id: subagents-on-sonnet
+    require: {tool: [Agent, Task], where: {model: [sonnet, haiku]}}
+    why: Subagents should run on a cheaper model than the main session.
+    fix: Pass model "sonnet" (or "haiku") to the Agent tool.
+  - id: subagents-on-sonnet-no-fork
+    never: {tool: [Agent, Task], with: {subagent_type: fork}}
+    why: A fork always runs on the main session's model, whatever model you pass.
+    fix: Start a fresh subagent (a subagent_type other than fork) with model "sonnet".

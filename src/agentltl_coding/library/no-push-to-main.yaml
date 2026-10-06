@@ -1,0 +1,7 @@
+summary: Never push to main or master by name (a bare `git push` while on main is not seen).
+tags: [git]
+rules:
+  - id: no-push-to-main
+    never: {tool: git_push, where: {refspecs: [main, master, "*:main", "*:master"]}}
+    why: main only changes through reviewed pull requests.
+    fix: Push to a feature branch and open a pull request.

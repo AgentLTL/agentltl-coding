@@ -1,0 +1,13 @@
+summary: Warn before debug output that prints credentials (curl -v with auth headers, kubectl -v=6+, aws/az --debug, gcloud --log-http).
+tags: [secrets, devops]
+rules:
+  - id: no-leaky-debug
+    never:
+      - {tool: curl, with: {verbose: true}, where: {header: ["*uthorization*", "*oken*", "*-Key*"]}}
+      - {tool: "kubectl_*", where: {verbosity: ["6", "7", "8", "9", "1?"]}}
+      - {tool: "aws_*", with: {debug: true}}
+      - {tool: "az_*", with: {debug: true}}
+      - {tool: "gcloud_*", with: {log_http: true}}
+    why: At these levels the tools print request headers, including bearer tokens and signatures.
+    fix: Drop the debug flag, or lower the verbosity (kubectl -v=5 or less).
+    mode: warn

@@ -1,0 +1,83 @@
+# Creative rules: workflows, research hygiene and security tripwires.
+# Each one is exercised with `agentltl check` in the commit that added it.
+
+rules:
+  # Numbers in results/ must come out of code, never typed in by the model.
+  - id: no-hand-typed-results
+    never: {tool: [Edit, Write, NotebookEdit], where: {file_path: ["results/**", "figures/**"]}}
+    why: Results are produced by scripts, so every number can be traced to code.
+    fix: Change the script that produces the file and run it.
+
+  # Every experiment run maps to a commit.
+  - id: commit-before-experiment
+    before:
+      first: git_commit
+      then: {tool: python, where: {script: "train*.py"}}
+      since: [Edit, Write]
+    why: An experiment run on uncommitted code cannot be reproduced.
+
+  # Plan before code.
+  - id: plan-first
+    before:
+      first: {tool: Write, where: {file_path: PLAN.md}}
+      then: {tool: [Edit, Write], where: {file_path: "src/**"}}
+    why: Write the plan to PLAN.md before touching src/.
+
+  # Test-first: the test changes before the code does.
+  - id: test-first
+    before:
+      first: {tool: [Edit, Write], where: {file_path: "tests/**"}}
+      then: {tool: [Edit, Write], where: {file_path: "src/**"}}
+      since: git_commit
+    mode: warn
+    why: Write or change a test before the implementation, in every commit.
+
+  # Prompt-injection tripwire: nothing legitimate ever reads the canary.
+  - id: canary
+    never: {tool: [Read, cat, head, tail, grep, cp, Grep], where: {"*": "**/CANARY_*"}}
+    mode: stop
+    why: The canary file is bait; reading it means instructions came from untrusted content.
+
+  # Break the exfiltration chain: after reading the web, outbound sends need you.
+  - id: web-then-send
+    ltl: 'G(now("WebFetch") -> G(!now("curl") & !now("wget") & !now("scp")))'
+    mode: ask
+    why: Untrusted web content was read this session; sending data out needs your approval.
+
+  # Conventional commits.
+  - id: conventional-commits
+    require: {tool: git_commit, where: {message: ["feat*", "fix*", "docs*", "test*", "refactor*", "chore*"]}}
+    mode: retry
+    why: Commit messages follow Conventional Commits (feat:, fix:, docs:, ...).
+
+  # Subagent budget.
+  - id: subagent-budget
+    at_most: {call: [Agent, Task], times: 3}
+    mode: ask
+    why: Subagents are expensive; ask before a fourth.
+
+  # Look before you overwrite: the same file must have been read first.
+  - id: read-before-overwrite
+    before:
+      first: {tool: Read, with: {file_path: $f}}
+      then:
+        - {tool: [Edit, Write], with: {file_path: $f}, exists: true}
+        - {tool: [sed, perl, tee], with: {paths: $f}, exists: true}   # in-place edits, tee
+        - {tool: sponge, with: {file: $f}, exists: true}
+        - {tool: "*", with: {overwrite_to: $f}, exists: true}         # > file (>> only appends)
+    why: Read a file before replacing it.
+
+  # Decision log before anything destructive.
+  - id: log-before-destroy
+    before:
+      first: {tool: [Edit, Write], where: {file_path: DECISIONS.md}}
+      then: [{tool: rm, with: {recursive: true}}, {tool: git_reset, with: {hard: true}}]
+    why: Record why in DECISIONS.md before deleting anything.
+
+  # A runbook that enforces itself.
+  - id: drain-before-reboot
+    before:
+      first: kubectl_drain
+      then: {tool: ssh, where: {command: "*reboot*"}}
+    scope: project
+    why: Drain the node before rebooting it.

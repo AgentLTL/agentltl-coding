@@ -1,0 +1,12 @@
+summary: Ask before installing or adding packages (pip, npm, yarn, pnpm, uv, poetry, cargo, apt, brew, gem, go).
+tags: [dependencies]
+rules:
+  - id: ask-before-installing
+    never:
+      - pip_install
+      - {tool: python, with: {module: pip, script: install}}
+      - {tool: [npm, pnpm, uv, gem, apt, apt-get, brew, go, pipx], with: {argv: install}}
+      - {tool: npm, with: {argv: i}}
+      - {tool: [yarn, pnpm, uv, poetry, cargo], with: {argv: add}}
+    why: New dependencies change the supply chain and the lockfile; the user decides.
+    mode: ask

@@ -1,0 +1,11 @@
+summary: Read an existing file before overwriting or editing it in place.
+tags: [editing]
+rules:
+  - id: read-before-overwrite
+    before:
+      first: {tool: Read, with: {file_path: $f}}
+      then: [{tool: Write, with: {file_path: $f}, exists: true},
+             {tool: [sed, perl], with: {in_place: true, paths: $f}, exists: true},
+             {tool: "*", with: {overwrite_to: $f}, exists: true}]
+    why: Overwriting a file you have not read loses whatever was in it.
+    fix: Read the file first, then write it.

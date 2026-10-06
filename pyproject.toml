@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentltl-coding"
+version = "0.1.0"
+description = "AgentLTL rules for coding agents: the AGENTLTL.yaml language, a rule library, and a guard any harness can call."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "agentltl>=0.2",
+    "cli-to-tools>=0.2",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "ruff>=0.4"]
+
+[project.scripts]
+agentltl = "agentltl_coding.cli:main"
+
+[project.urls]
+Homepage = "https://agentltl.github.io"
+Source = "https://github.com/AgentLTL/agentltl-coding"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+agentltl_coding = ["library/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

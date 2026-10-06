@@ -1,0 +1,12 @@
+summary: Ask before git commands that throw away uncommitted or unpushed work.
+tags: [git]
+rules:
+  - id: ask-before-discarding-work
+    never:
+      - {tool: git_reset, with: {hard: true}}
+      - {tool: git_clean, with: {force: true}}
+      - {tool: git_branch, with: {force_delete: true}}
+      - {tool: [git_stash_drop, git_stash_clear]}
+      - {tool: [git_checkout, git_restore], where: {paths: "*"}}
+    why: These commands discard work that may not exist anywhere else.
+    mode: ask

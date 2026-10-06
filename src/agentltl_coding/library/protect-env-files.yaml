@@ -1,0 +1,9 @@
+summary: Never read, write, copy or delete .env files (.env.example is fine).
+tags: [secrets]
+rules:
+  - id: protect-env-files
+    never: {tool: "*", where: {"*": [".env", ".env.local", ".env.*.local", ".env.production",
+                                     ".env.staging", ".env.development"]}}
+    why: .env files hold credentials; reading one puts secrets into the conversation.
+    fix: Ask the user for the variable names you need, or read .env.example.
+    mode: stop

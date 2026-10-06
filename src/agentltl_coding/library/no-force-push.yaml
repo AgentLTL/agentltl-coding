@@ -1,0 +1,7 @@
+summary: Never force-push (--force-with-lease is still allowed).
+tags: [git]
+rules:
+  - id: no-force-push
+    never: {tool: git_push, with: {force: true}}
+    why: Force-pushing rewrites shared history and can destroy other people's work.
+    fix: Pull and merge or rebase, then push normally, or use --force-with-lease.

@@ -1,0 +1,26 @@
+# Rebuild https://agentltl.github.io when this repository changes: the site pulls its
+# reference pages from here (see AgentLTL/AgentLTL.github.io, scripts/pull.py).
+# Needs the DOCS_DISPATCH_TOKEN organization secret; without it the site still rebuilds nightly.
+name: Docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  rebuild-site:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask the site to rebuild
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::DOCS_DISPATCH_TOKEN is not set; the site will pick this up at its nightly build."
+            exit 0
+          fi
+          gh api repos/AgentLTL/AgentLTL.github.io/dispatches \
+            -f event_type=docs \
+            -f "client_payload[repository]=${{ github.repository }}" \
+            -f "client_payload[sha]=${{ github.sha }}"

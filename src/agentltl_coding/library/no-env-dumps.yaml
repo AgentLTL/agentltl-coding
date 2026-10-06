@@ -1,0 +1,18 @@
+summary: Never print the environment or a secret-looking variable (env, printenv, export -p, echo $TOKEN, docker inspect...).
+tags: [secrets, devops]
+rules:
+  - id: no-env-dumps
+    never:
+      - {tool: [env, set], with: {argv: []}}
+      - printenv
+      - {tool: export, with: {print: true}}
+      - {tool: declare, with: {print: true}}
+      - {tool: declare, with: {export: true}}
+      - {tool: [echo, printf], where: {"*": ["*$*TOKEN*", "*$*SECRET*", "*$*PASSWORD*", "*$*PASSWD*",
+                                             "*$*API_KEY*", "*$*PRIVATE_KEY*", "*$*CREDENTIAL*"]}}
+      - {tool: [kubectl_exec, docker_exec], where: {command: [env, printenv]}}
+      - docker_inspect
+      - docker_compose_config
+    why: Environment variables often hold credentials; printing them puts the secrets into the conversation.
+    fix: Check that a variable is set without printing it, e.g. `test -n "$VAR" && echo set`.
+    mode: block

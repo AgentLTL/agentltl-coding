@@ -1,0 +1,48 @@
+# AGENTLTL.yaml – rules the AgentLTL plugin enforces on every Claude Code tool call.
+# Shell commands are parsed into structured calls first; list the names with `agentltl tools`.
+
+settings:
+  mode: block            # default escalation: block | warn | retry | ask | stop | log
+  retries: 3             # for mode: retry, blocked attempts before you are asked
+  unparseable:           # a shell command the guard cannot analyse
+    interactive: ask     # normal permission modes: you decide (ask | note | allow | deny)
+    auto: note           # auto mode: let it through, tell Claude it was not checked
+  announce: true         # list the rules to Claude at session start and after compaction
+
+rules:
+  - id: tests-before-push
+    before: {first: [pytest, {tool: make, with: {argv: test}}], then: git_push, since: [Edit, Write]}
+    why: CI takes 20 minutes; a red build blocks everyone.
+    fix: Run the test suite (pytest) after your last edit, then push.
+
+  - id: no-force-push
+    never: git_push
+    with: {force: true}
+    why: Force-pushing rewrites shared history.
+    mode: warn
+
+  - id: no-secrets
+    never: [Edit, Write, Read, cat, cp, mv, rm, echo, tee]
+    where: {"*": ["**/.env", "**/.env.*"]}
+    why: .env files hold credentials.
+    mode: stop
+
+  - id: lockfile-by-tool-only
+    never: [Edit, Write]
+    where: {file_path: "*.lock"}
+    why: Lockfiles are generated; edit the manifest and re-run the package manager.
+    mode: ask
+
+  - id: one-migration
+    at_most: {call: {tool: alembic_revision}, times: 1}
+    why: One migration per change.
+    mode: retry
+
+tools:                   # cli-to-tools specs for project commands
+  alembic:
+    subcommands:
+      revision:
+        options:
+          - {flags: [-m, --message]}
+          - {flags: [--autogenerate], type: bool}
+      upgrade: {positionals: [{name: revision}]}

@@ -1,0 +1,66 @@
+# Showcase rules: each one does something CLAUDE.md or permission rules cannot.
+# Every rule here is exercised by `agentltl check` (see README, Examples).
+
+rules:
+  - id: staging-before-prod
+    before:
+      first: {tool: make, with: {argv: deploy-staging}}
+      then: {tool: make, with: {argv: deploy-prod}}
+      since: [Edit, Write]
+    scope: project
+    why: Prod only gets what staging has already run.
+
+  - id: plan-before-apply
+    before: {first: terraform_plan, then: terraform_apply, since: [Edit, Write]}
+    why: Never apply infrastructure changes nobody has seen planned.
+
+  - id: one-pr-per-session
+    at_most: {call: gh_pr_create, times: 1}
+    mode: ask
+    why: A retried `gh pr create` opens duplicate PRs.
+
+  - id: no-push-to-main
+    never: git_push
+    where: {refspecs: [main, "*:main"]}
+    why: Main only changes through reviewed PRs.
+
+  - id: destructive-git
+    never:
+      - {tool: git_reset, with: {hard: true}}
+      - {tool: git_clean, with: {force: true}}
+      - {tool: git_checkout, with: {targets: "."}}
+      - {tool: git_branch, with: {force_delete: true}}
+      - {tool: docker_compose_down, with: {volumes: true}}
+      - docker_system_prune
+    mode: warn
+    why: These throw away work or data that cannot be recovered.
+
+  - id: stay-in-scope
+    require: {tool: [Edit, Write], where: {file_path: ["src/**", "tests/**"]}}
+    mode: ask
+    why: The task is limited to src/ and tests/.
+
+  - id: no-prod-data
+    never:
+      - {tool: [psql, mysql, redis_cli], where: {argv: "*prod*"}}
+      - {tool: "kubectl_*", where: {"*": "*prod*"}}     # namespace, context, names...
+    mode: stop
+    why: Production data is off limits to the agent.
+
+  - id: known-hosts-only
+    require:
+      - {tool: curl, where: {urls: ["https://api.github.com/*", "https://pypi.org/*"]}}
+      - {tool: WebFetch, where: {url: ["https://docs.python.org/*", "https://pypi.org/*"]}}
+    mode: ask
+    why: Network access is limited to known hosts.
+
+  - id: lint-before-commit
+    before: {first: ruff, then: git_commit, since: [Edit, Write]}
+    mode: retry
+    why: Commits must pass ruff.
+
+  - id: audit-sudo
+    never: sudo
+    mode: log
+    why: Every sudo is worth a second look.
+

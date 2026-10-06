@@ -1,0 +1,7 @@
+summary: Ask before any recursive delete (rm -r, rm -rf).
+tags: [files]
+rules:
+  - id: ask-before-recursive-delete
+    never: {tool: rm, with: {recursive: true}}
+    why: A recursive delete cannot be undone.
+    mode: ask

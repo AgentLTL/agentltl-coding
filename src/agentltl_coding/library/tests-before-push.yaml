@@ -1,0 +1,14 @@
+summary: Run the tests after your last edit before pushing (pytest, npm/cargo/go/make test, tox, jest).
+tags: [testing, git]
+rules:
+  - id: tests-before-push
+    before:
+      first:
+        - [pytest, tox, nox, jest, vitest]
+        - {tool: [npm, pnpm, yarn, cargo, go, make, just], with: {argv: test}}
+        - {tool: [uv, poetry], with: {argv: pytest}}
+        - {tool: npx, with: {argv: jest}}
+      then: git_push
+      since: [Edit, Write, MultiEdit, NotebookEdit]
+    why: Untested pushes break CI for everyone.
+    fix: Run the test suite after your last edit, then push. If your project tests differently, replace this rule with your own command.

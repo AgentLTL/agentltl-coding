@@ -1,0 +1,9 @@
+summary: Ask before changing infrastructure (terraform apply/destroy, kubectl apply/delete/scale/drain, aws s3 rm).
+tags: [cloud]
+rules:
+  - id: ask-before-infra-changes
+    never: [terraform_apply, terraform_destroy, kubectl_apply, kubectl_delete, kubectl_scale,
+            kubectl_drain, kubectl_create, aws_s3_rm]
+    why: Infrastructure changes affect running systems and other people.
+    fix: Show the plan (terraform plan, kubectl diff) and let the user run it.
+    mode: ask
