@@ -107,7 +107,8 @@ rules:
   - {id: h, before: {first: {tool: cat, with: {paths: $f}}, then: {tool: Edit, with: {file_path: $f}}}}
 """)
         warnings = lint(rs)
-        assert [w.split(":")[0] for w in warnings] == ["a", "b", "c", "g", "h"]
+        # h: a list argument on the `first` side matches when it contains the value
+        assert [w.split(":")[0] for w in warnings] == ["a", "b", "c", "g"]
         assert "'remote'" in warnings[0] and "make_test" in warnings[1]
 
 
