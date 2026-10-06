@@ -3,9 +3,9 @@ agentltl_coding/scan.py – spot credentials in what a tool call returned.
 
 A rule can only stop a call before it runs; when a program prints a credential anyway
 (`python app.py` logging its config, a test failure dumping the environment), the value is
-already in the conversation. The PostToolUse hook scans the output for well-known credential
+already in the conversation. The harness's after-the-call hook scans the output for well-known credential
 formats, the documented prefixes that secret scanners also use, and reports what kind was
-seen, never the value, so the user can rotate it and Claude does not repeat it.
+seen, never the value, so the user can rotate it and the agent does not repeat it.
 
 Only formats with a distinctive prefix or structure are matched, to keep false alarms rare.
 """
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, List
+from typing import Any, List, Tuple
 
 _MAX_SCAN = 1_000_000
 
@@ -41,18 +41,14 @@ def credential_kinds(value: Any) -> List[str]:
     return [kind for kind, pattern in _COMPILED if pattern.search(text)]
 
 
-def report(tool: str, kinds: List[str]) -> dict:
-    """The PostToolUse answer: a notice for the user, an instruction for Claude."""
+def report(tool: str, kinds: List[str]) -> Tuple[str, str]:
+    """What to say after a call whose output has credentials of *kinds*: a notice for the
+    user, and an instruction for the agent. The harness puts each where its agent shows it."""
     what = ", ".join(kinds)
-    return {
-        "systemMessage": (f"AgentLTL: the output of {tool} contains what looks like a "
-                          f"credential ({what}). If it is real, consider rotating it."),
-        "hookSpecificOutput": {
-            "hookEventName": "PostToolUse",
-            "additionalContext": (
-                f"The output of this {tool} call contains what looks like a credential ({what}). "
-                "Do not repeat, quote, copy or write that value anywhere: not in replies, files, "
-                "commands or commit messages. Tell the user it appeared, so they can rotate it, "
-                "and carry on without it."),
-        },
-    }
+    user = (f"AgentLTL: the output of {tool} contains what looks like a credential ({what}). "
+            "If it is real, consider rotating it.")
+    agent = (f"The output of this {tool} call contains what looks like a credential ({what}). "
+             "Do not repeat, quote, copy or write that value anywhere: not in replies, files, "
+             "commands or commit messages. Tell the user it appeared, so they can rotate it, "
+             "and carry on without it.")
+    return user, agent

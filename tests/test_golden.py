@@ -12,7 +12,9 @@ import pytest
 
 from agentltl_coding.rules import RuleFileError, library
 
-from .conftest import guard_for
+from agentltl_coding.harness import configure
+
+from .conftest import CLAUDE, COPILOT, guard_for
 from .test_library import _BEHAVIOUR, guard_using
 
 GOLDEN = Path(__file__).parent / "golden" / "verdicts.json"
@@ -68,8 +70,13 @@ def verdicts():
     got = {}
     for name, steps, _ in _BEHAVIOUR:
         got[f"pack/{name}"] = _run(guard_using(name), steps)
-    for name in sorted(library()):
-        got[f"corpus/{name}"] = _run(guard_using(name), CORPUS)
+    for name, pack in sorted(library().items()):
+        harness = CLAUDE if CLAUDE.matches(pack.get("harnesses")) else COPILOT
+        configure(harness)          # an entry for another agent runs under that agent
+        try:
+            got[f"corpus/{name}"] = _run(guard_using(name), CORPUS)
+        finally:
+            configure(CLAUDE)
     for path in sorted(EXAMPLES.glob("*.yaml")):
         got[f"example/{path.name}"] = _run(guard_for(path.read_text()), CORPUS)
     for name, (formula, steps) in FORMULAS.items():

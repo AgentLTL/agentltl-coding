@@ -126,7 +126,7 @@ class Settings:
         return self.builtins.get(name, True)
 
     @property
-    def memory_first(self) -> bool:      # the Claude Code built-in's switch, by its old name
+    def memory_first(self) -> bool:      # the harnesses' memory built-in, by its setting name
         return self.builtin("memory_first")
 
 
@@ -342,7 +342,8 @@ LIBRARY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "library"
 
 def library() -> Dict[str, Dict[str, Any]]:
     """The packaged rules, by name: each has ``summary``, ``tags``, ``rules``, ``tools``, and
-    for a bundle, ``include`` (other entries it switches on)."""
+    for a bundle, ``include`` (other entries it switches on). ``harnesses`` lists the agents an
+    entry is for (absent: every one); elsewhere ``use:`` of it switches nothing on."""
     out: Dict[str, Dict[str, Any]] = {}
     if os.path.isdir(LIBRARY_DIR):
         for name in sorted(os.listdir(LIBRARY_DIR)):
@@ -376,6 +377,8 @@ def _use(raw: Any, settings: Settings, paths: Paths) -> Tuple[List[Rule], Dict[s
             raise RuleError(f"no library rule '{name}'{hint}; `agentltl library` lists them")
         for entry in _expand(name, packs):
             pack = packs[entry]
+            if not _harness().matches(pack.get("harnesses")):
+                continue                      # another agent's rule (a project file both share)
             for i, rule in enumerate(pack.get("rules") or []):
                 if any(r.id == rule.get("id") for r in rules):
                     continue                  # already switched on by another entry or bundle

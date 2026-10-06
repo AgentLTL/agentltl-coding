@@ -1,4 +1,5 @@
 summary: Subagents run on Sonnet (or Haiku), never on a bigger model.
+harnesses: [claude-code]
 tags: [cost, agents]
 rules:
   - id: subagents-on-sonnet

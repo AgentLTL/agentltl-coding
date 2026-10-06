@@ -23,34 +23,48 @@ library of tested rules, and a guard that decides each tool call before it runs.
   `ask` (you decide), `retry` (then you decide), `stop`, `log`.
 - **Memory:** each rule reads the calls of this session, or of the project across sessions.
 
-The [Claude Code plugin](https://github.com/AgentLTL/agentltl-claude-code) is the first
-harness built on it. The full rule reference is on
-[agentltl.github.io](https://agentltl.github.io/rules/).
+Two harnesses are built on it: the
+[Claude Code plugin](https://github.com/AgentLTL/agentltl-claude-code) and the
+[GitHub Copilot CLI plugin](https://github.com/AgentLTL/agentltl-copilot-cli). The full rule
+reference is on [agentltl.github.io](https://agentltl.github.io/rules/).
 
 ## A harness in a few lines
 
 ```python
-from agentltl_coding import Guard, Harness, Paths, configure, load, rule_files
+from agentltl_coding import Harness, Session, configure
 
 configure(Harness(name="my-agent", agent="the agent", user_dir="~/.my-agent",
-                  shell_tools={"shell": "command"}))
+                  shell_tools={"Bash": "command"},
+                  tool_aliases={"shell": ("Bash", {"cmd": "command"}),
+                                "write_file": ("Write", {"path": "file_path"})}))
 
-ruleset = load(rule_files(cwd), Paths(cwd, project_root))
-guard = Guard(ruleset, Paths(cwd, project_root))
-guard.restore(session_state, project_state)
-
-verdict = guard.decide("shell", {"command": "git push --force"})
-# verdict.action: "none" | "deny" | "ask" | "stop"; verdict.reason: the message
-...
-guard.record("shell", {"command": "pytest"}, call_id, output, status=0)   # after it ran
-session_state, project_state = guard.dump(), guard.dump_project()
+s = Session(cwd, project_root, session_id)       # one per hook call; state is on disk
+if s.files:                                      # an AGENTLTL.yaml applies here
+    verdict = s.pre("shell", {"cmd": "git push --force"})      # before the call
+    # verdict.action: "none" | "deny" | "ask" | "stop"; verdict.reason: the message
+    ...
+    s.post("shell", {"cmd": "pytest"}, call_id, output, status=0)   # after it ran
+    s.finish()          # the agent wants to stop: "block" while a `finally` rule is unmet
+    s.prompt()          # the user wrote: lift a `stop`
 ```
 
-`Harness` says what differs between agents: the agent's name in messages, where the user's
-`AGENTLTL.yaml` lives, which tools take shell command lines, and built-in rules of its own
-(the Claude Code plugin adds `memory-first`). `agentltl_coding.cli.main(argv, extend=...)`
-is the `agentltl` command (validate, check, translate, tools, library, use, ...), to which a
-harness can add commands.
+`Harness` says what differs between agents:
+
+- the agent's name in messages, and where the user's `AGENTLTL.yaml` lives;
+- `tool_aliases`: its tool names mapped onto the canonical ones rules use (Claude Code's
+  `Bash`, `Write`, `Edit`, `Read`...), so the library works unchanged (Copilot's
+  `create {path, file_text}` is `Write {file_path, content}`);
+- which tools take shell command lines, and the permission modes in which nobody answers a
+  prompt;
+- built-in rules of its own (`memory-first`), and where its memory lives, for
+  `agentltl memory scan` (`agentltl_coding.memory`).
+
+`Session` is what the hooks do: it keeps the session and project traces on disk, holds a
+`stop` until the user replies, logs interventions, and scans call output for credentials.
+`Guard` underneath decides one call. `agentltl_coding.cli.main(argv, extend=...)` is the
+`agentltl` command (validate, check, translate, tools, library, use, memory...), to which a
+harness can add commands. A library entry with `harnesses: [claude-code]` is for that agent
+only; elsewhere `use:` of it switches nothing on, so one project file serves every agent.
 
 ## Develop
 

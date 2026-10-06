@@ -13,8 +13,9 @@ from typing import Any, List
 
 import yaml
 
-NEW_FILE = ("# AGENTLTL.yaml – rules the AgentLTL plugin enforces on every Claude Code\n"
-            "# tool call. `agentltl library` lists packaged rules; add your own under `rules:`.\n"
+# The same file serves every harness (Claude Code, Copilot CLI...), so it names none.
+NEW_FILE = ("# AGENTLTL.yaml – rules AgentLTL enforces on every tool call of your coding agent.\n"
+            "# `agentltl library` lists packaged rules; add your own under `rules:`.\n"
             "\nrules: []\n")
 
 

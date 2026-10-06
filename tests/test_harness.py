@@ -2,7 +2,7 @@
 
 from agentltl_coding import Guard, Harness, Paths, configure, current, lint, loads
 
-from .conftest import CLAUDE
+from .conftest import CLAUDE, COPILOT, run
 
 
 def with_harness(harness, fn):
@@ -50,3 +50,72 @@ def test_lint_catches_a_misspelt_tool_in_a_formula():
     assert any("git_psuh" in w and "git_push" in w for w in lint(rs))
     rs = loads("rules: [{id: r, ltl: 'G(now(\"git_push\") -> X(G(!now(\"git_push\"))))'}]")
     assert lint(rs) == []
+
+
+# ── GitHub Copilot CLI: its own tool names, the library's rules ─────────────────
+
+def _copilot(fn):
+    return with_harness(COPILOT, fn)
+
+
+def _guard(text, cwd):
+    g = Guard(loads(text, Paths(cwd, cwd)), Paths(cwd, cwd))
+    g.restore({})
+    return g
+
+
+def test_copilot_tools_are_checked_under_the_canonical_names(tmp_path):
+    (tmp_path / "a.txt").write_text("x")
+
+    def go():
+        g = _guard("use: [read-before-overwrite]", str(tmp_path))
+        create = ("create", {"path": "a.txt", "file_text": "y"})
+        return run(g, create, ("view", {"path": "a.txt"}), create,
+                   ("create", {"path": "new.txt", "file_text": "y"}))
+
+    assert _copilot(go) == ["deny", "none", "none", "none"]
+
+
+def test_copilot_bash_is_a_shell_tool_and_the_trace_keeps_canonical_names():
+    def go():
+        g = _guard("rules: [{id: t, before: [pytest, git_push]}]", "/p")
+        out = run(g, ("bash", {"command": "git push", "description": "push"}),
+                  ("bash", {"command": "pytest -q"}), ("bash", {"command": "git push"}))
+        return out, [c["tool_name"] for c in g.trace]
+
+    assert _copilot(go) == (["deny", "none", "none"], ["pytest", "git_push"])
+
+
+def test_an_edit_matches_rules_on_edit_by_file_path():
+    def go():
+        g = _guard("rules: [{id: no-env, never: {tool: Edit, where: {file_path: '*.env'}}}]", "/p")
+        return run(g, ("edit", {"path": "/p/.env", "old_str": "a", "new_str": "b"}),
+                   ("edit", {"path": "/p/a.py", "old_str": "a", "new_str": "b"}))
+
+    assert _copilot(go) == ["deny", "none"]
+
+
+def test_library_entries_for_another_agent_switch_nothing_on():
+    text = "use: [no-claude-coauthor, no-copilot-coauthor, subagents-on-sonnet]"
+    claude = [r.id for r in loads(text).rules]
+    copilot = _copilot(lambda: [r.id for r in loads(text).rules])
+    assert claude == ["no-claude-coauthor", "subagents-on-sonnet", "subagents-on-sonnet-no-fork"]
+    assert copilot == ["no-copilot-coauthor"]
+
+
+def test_no_copilot_coauthor():
+    def go():
+        g = _guard("use: [no-copilot-coauthor]", "/p")
+        return run(g, 'git commit -m x -m "Co-authored-by: Copilot <223556219+Copilot@users.'
+                      'noreply.github.com>"', 'git commit -m "fix bug"')
+
+    assert _copilot(go) == ["deny", "none"]
+
+
+def test_auto_modes_and_project_env_come_from_the_harness(monkeypatch, tmp_path):
+    from agentltl_coding.cli import _here
+    from agentltl_coding.guard import is_auto
+    assert is_auto("bypassPermissions") and not _copilot(lambda: is_auto("bypassPermissions"))
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+    assert _here()[1] == str(tmp_path)
+    assert _copilot(lambda: _here()[1]) != str(tmp_path)

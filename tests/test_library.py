@@ -7,7 +7,9 @@ from agentltl_coding.guard import Guard, lint
 from agentltl_coding.pattern import Paths
 from agentltl_coding.rules import RuleFileError, library, load, loads
 
-from .conftest import run
+from agentltl_coding.harness import configure
+
+from .conftest import CLAUDE, COPILOT, run
 
 PACKS = library()
 
@@ -23,9 +25,17 @@ def guard_using(pack, cwd="/proj"):
 def test_every_pack_compiles_without_warnings(name):
     pack = PACKS[name]
     assert pack.get("summary") and pack.get("tags") and (pack.get("rules") or pack.get("include"))
-    ruleset = loads(f"use: [{name}]")
-    assert ruleset.rules and all(r.why for r in ruleset.rules)
-    assert lint(ruleset) == []
+    for harness in (CLAUDE, COPILOT):
+        configure(harness)
+        try:
+            ruleset = loads(f"use: [{name}]")
+        finally:
+            configure(CLAUDE)
+        if not harness.matches(pack.get("harnesses")):
+            assert ruleset.rules == []     # another agent's entry switches nothing on
+            continue
+        assert ruleset.rules and all(r.why for r in ruleset.rules)
+        assert lint(ruleset) == []
 
 
 def test_rule_ids_are_unique_across_the_library():

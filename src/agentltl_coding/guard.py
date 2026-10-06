@@ -34,7 +34,6 @@ from .harness import current as _harness
 from .pattern import PATH_KEYS, Paths, normalize_paths
 from .rules import MODES, SCOPES, Rule, RuleSet
 
-AUTO_MODES = ("auto", "bypassPermissions", "dontAsk")
 _MAX_TRACE = 5000
 _MAX_LOG = 200
 _MAX_STRING = 2000
@@ -166,7 +165,8 @@ def _flatten(targets: Any) -> List[Any]:
 
 
 def is_auto(permission_mode: Optional[str]) -> bool:
-    return permission_mode in AUTO_MODES
+    """Whether the harness's *permission_mode* is one in which nobody answers a prompt."""
+    return permission_mode in _harness().auto_modes
 
 
 class Guard:
@@ -218,7 +218,7 @@ class Guard:
     # ── deciding ──────────────────────────────────────────────────────────────
 
     def translate(self, tool_name: str, tool_input: Dict[str, Any]) -> List[ToolCall]:
-        """The structured calls a tool call stands for.
+        """The structured calls a tool call (canonical names) stands for.
 
         Raises:
             TranslationError: For a shell command line cli-to-tools cannot analyse.
@@ -236,7 +236,7 @@ class Guard:
     def decide(self, tool_name: str, tool_input: Dict[str, Any], *, auto: bool = False) -> Verdict:
         if not self.ruleset.rules:
             return Verdict()
-        tool_input = tool_input or {}
+        tool_name, tool_input = _harness().canonical(tool_name, tool_input)
         try:
             calls = self.translate(tool_name, tool_input)
         except TranslationError as exc:
@@ -352,6 +352,7 @@ class Guard:
     def record(self, tool_name: str, tool_input: Dict[str, Any], tool_id: str,
                result: Any, status: Optional[int] = None) -> None:
         """Add a call that has run to the session and project traces."""
+        tool_name, tool_input = _harness().canonical(tool_name, tool_input)
         tool_input = _trim(self._input(tool_name, tool_input))
         text = result if isinstance(result, str) else ("" if result is None else str(result))
         text = text[:_MAX_STRING]

@@ -1,4 +1,5 @@
 summary: Claude never signs commits, tags or notes (no Co-Authored-By, no Claude author).
+harnesses: [claude-code]
 tags: [git]
 rules:
   - id: no-claude-coauthor

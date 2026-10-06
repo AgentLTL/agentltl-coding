@@ -11,6 +11,8 @@ agentltl_coding/cli.py – the ``agentltl`` command.
     agentltl library [NAME]              packaged rules you can switch on, or one in full
     agentltl use NAME... [--mode M]      switch packaged rules on (unuse: off)
     agentltl disable ID...               switch single rules off by id (enable: back on)
+    agentltl memory scan [FILE...]       statements in the agent's memory that could be rules
+    agentltl memory decline ID...        don't propose these statements again (forget: undo)
 
 ``use``/``unuse``/``disable``/``enable`` edit the project's AGENTLTL.yaml (created if
 missing), or the user's (see :class:`agentltl_coding.Harness`) with ``--user``. A harness
@@ -103,6 +105,21 @@ def main(argv: Optional[List[str]] = None,
             p.add_argument("--from", dest="origin", metavar="ID", action="append",
                            help="the memory statement this enforces")
 
+    if _harness().memory is not None:
+        p = sub.add_parser("memory", help=f"find the rules in {_harness().agent}'s memory files")
+        msub = p.add_subparsers(dest="memory_cmd", required=True)
+        m = msub.add_parser("scan", help="statements that could become rules")
+        m.add_argument("files", nargs="*", help="only these files (default: the memory that "
+                       "applies here)")
+        m.add_argument("--user", action="store_true", help="the user's own memory files")
+        m.add_argument("--all", action="store_true",
+                       help="also statements already covered or declined")
+        m.add_argument("--json", action="store_true", help="machine-readable output")
+        for name, what in (("decline", "don't propose these statements again"),
+                           ("forget", "undo `decline`")):
+            m = msub.add_parser(name, help=what)
+            m.add_argument("ids", nargs="+", metavar="ID")
+
     commands = dict(_COMMANDS)
     if extend is not None:
         extend(sub, commands)
@@ -118,7 +135,8 @@ def main(argv: Optional[List[str]] = None,
 
 def _here() -> Tuple[str, str]:
     cwd = os.getcwd()
-    return cwd, os.environ.get("CLAUDE_PROJECT_DIR") or _git_root(cwd) or cwd
+    env = _harness().project_env
+    return cwd, (os.environ.get(env) if env else None) or _git_root(cwd) or cwd
 
 
 def _git_root(path: str) -> Optional[str]:
@@ -222,6 +240,10 @@ def _warn(ruleset: RuleSet) -> None:
 
 def _step(raw: str) -> Tuple[str, Dict[str, Any]]:
     m = _TOOL_STEP.match(raw.strip())
+    if not m:
+        word, _, rest = raw.strip().partition(" ")
+        if word in _harness().tool_aliases and rest.strip().startswith("{"):
+            m = re.match(r"(\S+)\s+(\{.*\})\s*$", raw.strip(), re.S)
     if m:
         try:
             return m.group(1), json.loads(m.group(2))
@@ -329,6 +351,7 @@ def _library(args: argparse.Namespace) -> int:
         with open(packs[args.name]["path"], encoding="utf-8") as fh:
             print(fh.read(), end="")
         return 0
+    packs = {n: p for n, p in packs.items() if _harness().matches(p.get("harnesses"))}
     if args.json:
         print(json.dumps([{"name": n, "summary": p.get("summary", ""), "tags": p.get("tags", []),
                            "in_use": n in used,
@@ -368,6 +391,12 @@ def _edit_list(args: argparse.Namespace) -> int:
                 print(f"No library rule {n!r}" + (f" (did you mean {close[0]!r}?)" if close else ""),
                       file=sys.stderr)
             return 1
+        other = [n for n in args.names if not _harness().matches(packs[n].get("harnesses"))]
+        if other:
+            for n in other:
+                print(f"Library rule {n!r} is for {', '.join(packs[n]['harnesses'])}, not "
+                      f"{_harness().name}.", file=sys.stderr)
+            return 1
         items = [i for i in items if _use_name(i) not in args.names]
         extra = {k: v for k, v in (("mode", args.mode), ("from", _from(args.origin))) if v}
         items += [{n: dict(extra)} if extra else n for n in args.names]
@@ -394,6 +423,48 @@ def _edit_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _memory(args: argparse.Namespace) -> int:
+    from . import memory
+
+    root = _here()[1]
+    if args.memory_cmd in ("decline", "forget"):
+        have = getattr(memory, args.memory_cmd)(root, args.ids)
+        print(f"Declined for {root}: {', '.join(have) or '(none)'}")
+        return 0
+    from .guard import translator_for
+    try:
+        ruleset = _ruleset([])
+    except RuleFileError:
+        ruleset = None
+    translator = translator_for(ruleset or RuleSet())
+    result = memory.scan(root, ruleset, translator, user_only=args.user, files=args.files)
+    if not args.all:
+        result["statements"] = [s for s in result["statements"]
+                                if s["status"] == "new" and s["candidate"]]
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0
+    c = result["counts"]
+    print(f"{len(result['sources'])} memory file(s), {c['statements']} statement(s): "
+          f"{c['candidates']} new that may be rules, {c['covered']} covered by a rule, "
+          f"{c['declined']} declined." + ("" if args.all else " --all lists every statement."))
+    last = None
+    for st in result["statements"]:
+        if st["file"] != last:
+            last = st["file"]
+            print(f"\n{last}  (rules go in the {st['target']} file)")
+        mark = "" if st["status"] == "new" else f" [{st['status']}]"
+        mark += "" if st["candidate"] or not args.all else " [not a candidate]"
+        text = " ⏎ ".join(line.strip() for line in st["text"].splitlines())
+        text = text if len(text) <= 110 else text[:107] + "..."
+        print(f"  {st['id']} :{st['line']}{mark} {text}")
+        for cmd in st["commands"]:
+            names = ", ".join(c["name"] for c in cmd.get("calls", []))
+            spec = f"  (no spec: {', '.join(cmd['needs_spec'])})" if cmd.get("needs_spec") else ""
+            print(f"      `{cmd['text']}` -> {names}{spec}")
+    return 0
+
+
 def _from(ids: Optional[List[str]]) -> Any:
     if not ids:
         return None
@@ -402,7 +473,8 @@ def _from(ids: Optional[List[str]]) -> Any:
 
 _COMMANDS = {"validate": _validate, "check": _check, "translate": _translate, "tools": _tools,
              "trace": _trace, "reset": _reset, "library": _library, "use": _edit_list,
-             "unuse": _edit_list, "disable": _edit_list, "enable": _edit_list}
+             "unuse": _edit_list, "disable": _edit_list, "enable": _edit_list,
+             "memory": _memory}
 
 __all__ = ["main"]
 

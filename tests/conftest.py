@@ -19,7 +19,17 @@ MEMORY_FIRST = {
            "call to save it.",
 }
 CLAUDE = Harness(name="claude-code", agent="Claude", user_dir="~/.claude",
-                 shell_tools={"Bash": "command"}, builtins={"memory_first": MEMORY_FIRST})
+                 shell_tools={"Bash": "command"}, builtins={"memory_first": MEMORY_FIRST},
+                 auto_modes=("auto", "bypassPermissions", "dontAsk"),
+                 project_env="CLAUDE_PROJECT_DIR", skill="/agentltl:{}")
+# GitHub Copilot CLI's tool names, mapped onto the canonical (Claude Code) ones.
+COPILOT = Harness(name="copilot-cli", agent="Copilot", user_dir="~/.copilot",
+                  shell_tools={"Bash": "command", "powershell": "command"},
+                  tool_aliases={"bash": ("Bash", {}),
+                                "create": ("Write", {"path": "file_path", "file_text": "content"}),
+                                "edit": ("Edit", {"path": "file_path", "old_str": "old_string",
+                                                  "new_str": "new_string"}),
+                                "view": ("Read", {"path": "file_path"})})
 configure(CLAUDE)
 
 from agentltl_coding.guard import Guard
