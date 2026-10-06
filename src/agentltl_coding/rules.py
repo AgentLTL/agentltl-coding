@@ -32,10 +32,16 @@ each compiled to an AgentLTL formula over the calls up to the one being checked:
     require: T                when one of T's tools is called,   G(T's tools → matches(T))
                               its arguments match T
     at_most: {call: T, times: n}                                 G(matches(T) → < n earlier)
+    finally: T                before finishing, T has run         F matches(T)
+    finally: {call: T, since: S}  ... after the last S            G(matches(S) → F matches(T))
     ltl: '...'                raw AgentLTL formula (``agentltl.parse`` syntax)
     formula: {type, args}     structured AgentLTL formula
 
-Every kind but ``ltl``/``formula`` is past-only under ``G``, so AgentLTL judges it on the
+``finally`` rules never refuse a call: they are checked when the agent is about to finish
+(:meth:`agentltl_coding.Guard.finish`), which sends it back to do what is missing, at most
+``finish_retries`` times per turn.
+
+Every kind but ``finally``/``ltl``/``formula`` is past-only under ``G``, so AgentLTL judges it on the
 call being checked alone: a rule broken earlier (by an override) never blocks unrelated
 calls. A call whose files are only known at run time may match: that counts against it for
 ``never``/``before``'s ``then``/``at_most``, and does not satisfy ``require`` or ``before``'s
@@ -97,7 +103,7 @@ def mode_help(mode: str) -> str:
 STRENGTH = ("stop", "block", "ask", "retry", "warn", "log")
 UNPARSEABLE = ("ask", "note", "allow", "deny")
 SCOPES = ("session", "project")
-KINDS = ("never", "before", "require", "at_most", "ltl", "formula")
+KINDS = ("never", "before", "require", "at_most", "finally", "ltl", "formula")
 _RULE_KEYS = {"id", "why", "fix", "mode", "scope", "with", "where", "from", *KINDS}
 _FROM_KEYS = {"file", "line", "id", "text"}
 
@@ -113,6 +119,7 @@ class Settings:
     scan_output: bool = True
     retry_counting: str = "cumulative"   # cumulative | consecutive | hybrid
     report: int = 3                      # violations one refusal may list (nudge_max)
+    finish_retries: int = 2              # times per turn `finally` rules send the agent back
     builtins: Dict[str, bool] = field(default_factory=dict)   # harness built-in rule switches
 
     def builtin(self, name: str) -> bool:
@@ -148,7 +155,8 @@ class Rule:
 
     def constraint(self) -> Any:
         from agentltl import Constraint
-        return Constraint(self.id, self.formula, description=self.why, repair=self.fix)
+        return Constraint(self.id, self.formula, description=self.why, repair=self.fix,
+                          applies_to_final_answer=self.kind == "finally")
 
 
 @dataclass
@@ -408,7 +416,7 @@ def _settings(raw: Any) -> Settings:
         raise RuleError("expected a mapping")
     switches = set(_harness().builtins)
     unknown = set(raw) - {"mode", "retries", "unparseable", "announce", "scope", "scan_output",
-                          "retry_counting", "report"} - switches
+                          "retry_counting", "report", "finish_retries"} - switches
     if unknown:
         raise RuleError(f"unknown key(s) {sorted(unknown)}")
     s = Settings()
@@ -424,6 +432,10 @@ def _settings(raw: Any) -> Settings:
         if not isinstance(raw["report"], int) or raw["report"] < 1:
             raise RuleError("report must be a positive integer")
         s.report = raw["report"]
+    if "finish_retries" in raw:
+        if not isinstance(raw["finish_retries"], int) or raw["finish_retries"] < 0:
+            raise RuleError("finish_retries must be a non-negative integer")
+        s.finish_retries = raw["finish_retries"]
     if "mode" in raw:
         s.mode = _mode(raw["mode"])
     if "retries" in raw:
@@ -535,8 +547,8 @@ class _Pattern:
         self.target, self.paths = target, paths
         self.tools = target.tools
 
-    def match(self, name: str, args: Dict[str, Any]) -> Optional[bool]:
-        return self.target.match(name, args, self.paths)
+    def match(self, name: str, args: Dict[str, Any], call: Any = None) -> Optional[bool]:
+        return self.target.match(name, args, self.paths, call)
 
     def bind(self, bindings: Dict[str, Any]) -> "_Pattern":
         return _Pattern(_bound(self.target, bindings), self.paths)
@@ -631,8 +643,8 @@ def _before(raw: Dict[str, Any], paths: Paths, where: str) -> Tuple[Any, ...]:
         start = -1
         if since is not None:   # a call that may have been a `since` one resets, to be safe
             start = max((i for i, p in enumerate(calls[:-1])
-                         if since.match(p.name, p.args, paths) is not False), default=-1)
-        if any(a.matches(p.name, p.args, paths) for p in calls[start + 1:-1]):
+                         if since.match(p.name, p.args, paths, p) is not False), default=-1)
+        if any(a.matches(p.name, p.args, paths, p) for p in calls[start + 1:-1]):
             return None
         tail = ""
         if since is not None and start >= 0:
@@ -688,7 +700,7 @@ def _before_same_value(a: Any, b: Any, since: Any, paths: Paths, where: str) -> 
     def values_here(var: str, call: Any) -> List[Any]:
         values: List[Any] = []
         for t in _parts(b):
-            if t.matches(call.name, call.args, paths):
+            if t.matches(call.name, call.args, paths, call):
                 for arg, name in t.variables.items():
                     if name == var:
                         value = call.args.get(arg)
@@ -706,7 +718,7 @@ def _before_same_value(a: Any, b: Any, since: Any, paths: Paths, where: str) -> 
         missing = []
         for combo in _combinations({v: values_here(v, c) for v in names}):
             wanted = [_bound(t, combo) for t in _parts(a)]
-            if not any(w.matches(p.name, p.args, paths) for p in calls[:-1] for w in wanted):
+            if not any(w.matches(p.name, p.args, paths, p) for p in calls[:-1] for w in wanted):
                 missing.append(combo)
         if not missing:
             return None
@@ -776,7 +788,7 @@ def _at_most(raw: Dict[str, Any], paths: Paths, where: str) -> Tuple[Any, ...]:
         c = calls[-1]
         if target.match(c.name, c.args, paths) is False:
             return None
-        n = sum(1 for p in calls[:-1] if target.matches(p.name, p.args, paths))
+        n = sum(1 for p in calls[:-1] if target.matches(p.name, p.args, paths, p))
         if n >= times:
             return f"{target.describe()} may run at most {times} time(s); it already ran {n}."
         return None
@@ -803,8 +815,41 @@ def _formula(raw: Dict[str, Any], paths: Paths, where: str) -> Tuple[Any, ...]:
     return formula, str(formula), None, tuple(sorted(_tools_in(formula)))
 
 
+def _finally(raw: Dict[str, Any], paths: Paths, where: str) -> Tuple[Any, ...]:
+    """Before finishing: T has run (``F matches(T)``), or has run after the last S
+    (``G(matches(S) → F matches(T))``). Judged on the finished trace only."""
+    from agentltl import Eventually, Globally, Implies
+    spec = raw["finally"]
+    since = None
+    if isinstance(spec, dict) and "call" in spec:
+        if set(spec) - {"call", "since"}:
+            raise RuleError(f"{where}: expected a target, or {{call: <target>, since: <target>}}")
+        call = parse_target(spec["call"], f"{where}.call")
+        if spec.get("since") is not None:
+            since = parse_target(spec["since"], f"{where}.since")
+    else:
+        call = parse_target(spec, where)
+    done = Eventually(_matches(call, paths, maybe=False))
+    formula = done if since is None else Globally(Implies(_matches(since, paths, maybe=True), done))
+
+    def explain(calls: List[Any]) -> Optional[str]:
+        start = -1
+        if since is not None:
+            start = max((i for i, p in enumerate(calls)
+                         if since.match(p.name, p.args, paths, p) is not False), default=-2)
+            if start == -2:
+                return None                 # nothing that needs it happened
+        if any(call.matches(p.name, p.args, paths, p) for p in calls[start + 1:]):
+            return None
+        tail = f" after the last {since.describe()} (call #{start + 1})" if since else ""
+        return f"{call.describe()} has not run{tail}."
+
+    label = f"finally {call.describe()}" + (f" after {since.describe()}" if since else "")
+    return (formula, label, explain, call.tools, call) + ((since,) if since else ())
+
+
 _BUILDERS = {"never": _never, "before": _before, "require": _require, "at_most": _at_most,
-             "ltl": _ltl, "formula": _formula}
+             "finally": _finally, "ltl": _ltl, "formula": _formula}
 
 
 def build_formula(spec: Any, where: str = "formula") -> Any:

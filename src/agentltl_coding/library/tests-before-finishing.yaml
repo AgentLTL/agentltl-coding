@@ -1,0 +1,13 @@
+summary: Before finishing a turn that edited code, run the tests (pytest, npm/cargo/go/make test, tox, jest).
+tags: [testing]
+rules:
+  - id: tests-before-finishing
+    finally:
+      call:
+        - [pytest, tox, nox, jest, vitest]
+        - {tool: [npm, pnpm, yarn, cargo, go, make, just], with: {argv: test}}
+        - {tool: [uv, poetry], with: {argv: pytest}}
+        - {tool: npx, with: {argv: jest}}
+      since: [Edit, Write, MultiEdit, NotebookEdit]
+    why: Work handed back untested is work the user has to test.
+    fix: Run the test suite now. If the project tests differently, replace this rule with your own command.

@@ -86,7 +86,8 @@ class TestValidation:
         with pytest.raises(RuleFileError) as exc:
             loads("rules:\n  - id: ok\n    never: a\n  - id: bad\n", source="f.yaml")
         assert exc.value.problems == [
-            "f.yaml:4: rule 'bad' needs exactly one of never, before, require, at_most, ltl, formula"]
+            "f.yaml:4: rule 'bad' needs exactly one of never, before, require, at_most, finally, ltl, "
+            "formula"]
 
     def test_structured_formula(self):
         rs = loads("rules: [{id: x, formula: {type: Not, args: {operand: "

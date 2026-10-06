@@ -79,6 +79,7 @@ class Verdict:
 class _Call(NamedTuple):
     name: str
     args: Dict[str, Any]
+    raw: Dict[str, Any] = {}      # the recorded entry, for a call that ran
 
 
 def translator_for(ruleset: RuleSet, paths: Optional[Paths] = None) -> Translator:
@@ -193,6 +194,7 @@ class Guard:
                 default_severity=ConstraintSeverity.PERSISTENT_BLOCK,
                 max_soft_attempts=s.retries, soft_block_mode=s.retry_counting,
                 escalate_to=ConstraintSeverity.ASK, nudge_max=s.report,
+                max_termination_nudges=s.finish_retries,
                 translator=self.translator, shell_tools=_harness().shell_tools,
             )
             for scope in SCOPES
@@ -295,9 +297,46 @@ class Guard:
             reason = reason + "\n" + also
         return Verdict("deny", reason, context=notes, rule=name, calls=shown)
 
+    # ── finishing ─────────────────────────────────────────────────────────────
+
+    def finish(self) -> Verdict:
+        """The agent is about to finish its turn. "block" (with the message to send it back)
+        while a ``finally`` rule is unmet, at most ``finish_retries`` times per turn."""
+        lines: List[str] = []
+        names: List[str] = []
+        for scope in SCOPES:
+            enf = self.enforcers[scope]
+            if not any(r.kind == "finally" for r in self.ruleset.scoped(scope)):
+                continue
+            d = enf.check_termination()
+            for v in d.violations:
+                rule = self.ruleset.get(v.constraint_name)
+                history = [_Call(e.get("tool_name", ""), e.get("arguments") or {}, e)
+                           for e in enf.trace]
+                detail = (rule.explain(history) if rule and rule.explain else None) or v.detail
+                names.append(v.constraint_name)
+                line = f"- {v.constraint_name}: {detail}"
+                if rule and rule.why:
+                    line += f" ({rule.why})"
+                if rule and rule.fix:
+                    line += f" To comply: {rule.fix}"
+                lines.append(line)
+        if not lines:
+            return Verdict()
+        reason = ("[AGENTLTL] Before you finish, these rules need something done first:\n"
+                  + "\n".join(lines)
+                  + "\nDo it now, then finish. If a rule genuinely does not apply here, say "
+                    "why in your answer.")
+        return Verdict("block", reason, rule=names[0])
+
+    def new_turn(self) -> None:
+        """A new user message: ``finally`` rules may send the agent back again."""
+        for enf in self.enforcers.values():
+            enf.reset_termination_nudges()
+
     def _history(self, enf: ShellEnforcer, calls: List[ToolCall], index: int) -> List[_Call]:
         """The calls up to the one at *index* of this command line, for explanations."""
-        past = [_Call(e.get("tool_name", ""), e.get("arguments") or {}) for e in enf.trace]
+        past = [_Call(e.get("tool_name", ""), e.get("arguments") or {}, e) for e in enf.trace]
         return past + [_Call(c.name, c.args) for c in calls[:index + 1]]
 
     def _explain(self, rule: Optional[Rule], enf: ShellEnforcer, calls: List[ToolCall],

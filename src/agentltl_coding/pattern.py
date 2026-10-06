@@ -22,6 +22,12 @@ migration" does not also catch creating a new one:
 
     {tool: Write, where: {file_path: "migrations/*"}, exists: true}
 
+``succeeded: true`` (or ``false``) requires a call that ran to have succeeded (or failed):
+a shell command's exit status, as the harness recorded it. A call that has not run yet may
+or may not succeed, so for it the answer is "maybe":
+
+    before: {first: {tool: pytest, succeeded: true}, then: git_push}
+
 A ``with`` value written ``$name`` is a variable, not a literal: ``before`` uses it to tie
 two calls together (``{tool: Read, with: {file_path: $f}}`` before
 ``{tool: Edit, with: {file_path: $f}}`` means "the same file").
@@ -66,15 +72,29 @@ class Target:
     where: Dict[str, Tuple[str, ...]] = field(default_factory=dict)
     exists: Optional[bool] = None
     variables: Dict[str, str] = field(default_factory=dict)   # argument -> variable name
+    succeeded: Optional[bool] = None
 
-    def matches(self, name: str, args: Optional[Dict[str, Any]], paths: Paths) -> bool:
-        return self.match(name, args, paths) is True
+    def matches(self, name: str, args: Optional[Dict[str, Any]], paths: Paths,
+                call: Any = None) -> bool:
+        return self.match(name, args, paths, call) is True
 
-    def match(self, name: str, args: Optional[Dict[str, Any]], paths: Paths) -> Optional[bool]:
+    def match(self, name: str, args: Optional[Dict[str, Any]], paths: Paths,
+              call: Any = None) -> Optional[bool]:
         """True, False, or None for "maybe": a path condition on a call whose file
-        arguments are only known at run time (see UNKNOWN_PATHS)."""
+        arguments are only known at run time (see UNKNOWN_PATHS), or a ``succeeded``
+        condition on a call that has not run. *call* is the recorded call, if it ran."""
         if not tool_matches(name, self.tools):
             return False
+        if self.succeeded is not None:
+            ran = _status(call)
+            if ran is None:
+                return None if self.match_args(name, args, paths) is not False else False
+            if (ran == 0) != self.succeeded:
+                return False
+        return self.match_args(name, args, paths)
+
+    def match_args(self, name: str, args: Optional[Dict[str, Any]], paths: Paths) -> Optional[bool]:
+        """The argument conditions alone (``with``, ``where``, ``exists``)."""
         args = args or {}
         unknown = args.get(UNKNOWN_PATHS) or []
         maybe = False
@@ -116,6 +136,8 @@ class Target:
         parts += [f"{k} matching {' or '.join(v)}" for k, v in self.where.items()]
         if self.exists is not None:
             parts.append("existing path" if self.exists else "new path")
+        if self.succeeded is not None:
+            parts.append("succeeded" if self.succeeded else "failed")
         return f"{tools} ({', '.join(parts)})" if parts else tools
 
 
@@ -129,11 +151,13 @@ class AnyTarget:
     def tools(self) -> Tuple[str, ...]:
         return tuple(dict.fromkeys(t for target in self.targets for t in target.tools))
 
-    def matches(self, name: str, args: Optional[Dict[str, Any]], paths: Paths) -> bool:
-        return self.match(name, args, paths) is True
+    def matches(self, name: str, args: Optional[Dict[str, Any]], paths: Paths,
+                call: Any = None) -> bool:
+        return self.match(name, args, paths, call) is True
 
-    def match(self, name: str, args: Optional[Dict[str, Any]], paths: Paths) -> Optional[bool]:
-        results = [t.match(name, args, paths) for t in self.targets]
+    def match(self, name: str, args: Optional[Dict[str, Any]], paths: Paths,
+              call: Any = None) -> Optional[bool]:
+        results = [t.match(name, args, paths, call) for t in self.targets]
         if True in results:
             return True
         return None if None in results else False
@@ -153,21 +177,33 @@ def parse_target(spec: Any, where: str, *, with_: Any = None, where_: Any = None
         return AnyTarget(tuple(parse_target(s, f"{where}[{i}]", with_=with_, where_=where_)
                                for i, s in enumerate(spec)))
     if isinstance(spec, dict):
-        unknown = set(spec) - {"tool", "with", "where", "exists"}
+        unknown = set(spec) - {"tool", "with", "where", "exists", "succeeded"}
         if unknown:
             raise RuleError(f"{where}: unknown key(s) {sorted(unknown)} "
-                            "(expected tool, with, where, exists)")
+                            "(expected tool, with, where, exists, succeeded)")
         exists = spec.get("exists")
         if exists is not None and not isinstance(exists, bool):
             raise RuleError(f"{where}.exists: must be true or false")
+        succeeded = spec.get("succeeded")
+        if succeeded is not None and not isinstance(succeeded, bool):
+            raise RuleError(f"{where}.succeeded: must be true or false")
         if "tool" not in spec:
             raise RuleError(f"{where}: a target needs 'tool'")
         tools = _names(spec["tool"], where)
         w = {**_mapping(spec.get("with"), f"{where}.with"), **_mapping(with_, "with")}
         g = {**_patterns(spec.get("where"), f"{where}.where"), **_patterns(where_, "where")}
-        return _with_variables(Target(tools, w, g, exists))
+        return _with_variables(Target(tools, w, g, exists, succeeded=succeeded))
     return _with_variables(Target(_names(spec, where), _mapping(with_, "with"),
                                   _patterns(where_, "where")))
+
+
+def _status(call: Any) -> Optional[int]:
+    """The exit status of a call that ran: 0 when recorded without one (calls were only
+    recorded once they succeeded before statuses were); None for a call not run yet."""
+    raw = getattr(call, "raw", None)
+    if not isinstance(raw, dict) or ("result" not in raw and "status" not in raw):
+        return None
+    return int(raw.get("status") or 0)
 
 
 def tool_matches(name: str, tools: Tuple[str, ...]) -> bool:
