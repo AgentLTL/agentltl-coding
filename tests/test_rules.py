@@ -92,7 +92,7 @@ class TestValidation:
     def test_structured_formula(self):
         rs = loads("rules: [{id: x, formula: {type: Not, args: {operand: "
                    "{type: Called, args: {tool: rm}}}}}]")
-        assert str(rs.rules[0].formula) == '¬(called("rm"))'
+        assert str(rs.rules[0].formula) == '!(called("rm"))'
 
     def test_lint_flags_names_nothing_produces(self):
         rs = loads("""
