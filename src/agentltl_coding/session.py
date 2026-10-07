@@ -126,7 +126,8 @@ def reminder(ruleset: RuleSet) -> Optional[str]:
         f"This project enforces {len(ruleset.rules)} AGENTLTL rule(s) on every tool call, shell "
         "commands included (each command line is checked as the sequence of commands it runs). "
         "A call that breaks a rule is refused with the reason; follow it rather than working "
-        "around it. Rules:",
+        "around it. When a rule keeps you from doing what the user asked, or refuses a call, "
+        "tell the user in your reply and name the rule. Rules:",
     ]
     note = _harness().memory_note
     for r in ruleset.rules:
