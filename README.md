@@ -23,9 +23,10 @@ library of tested rules, and a guard that decides each tool call before it runs.
   `ask` (you decide), `retry` (then you decide), `stop`, `log`.
 - **Memory:** each rule reads the calls of this session, or of the project across sessions.
 
-Two harnesses are built on it: the
-[Claude Code plugin](https://github.com/AgentLTL/agentltl-claude-code) and the
-[GitHub Copilot CLI plugin](https://github.com/AgentLTL/agentltl-copilot-cli). The full rule
+Three harnesses are built on it: the
+[Claude Code plugin](https://github.com/AgentLTL/agentltl-claude-code), the
+[GitHub Copilot CLI plugin](https://github.com/AgentLTL/agentltl-copilot-cli) and the
+[Mistral Vibe plugin](https://github.com/AgentLTL/agentltl-mistral-vibe). The full rule
 reference is on [agentltl.github.io](https://agentltl.github.io/rules/).
 
 ## A harness in a few lines

@@ -15,7 +15,7 @@ from .pattern import Paths
 from .rules import RuleFileError, RuleSet, library, load, loads, rule_files
 from .session import Session
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = ["Guard", "Harness", "Paths", "RuleFileError", "RuleSet", "Session", "Verdict", "configure",
            "current", "library", "lint", "load", "loads", "rule_files", "translator_for"]
