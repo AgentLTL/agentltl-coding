@@ -1,0 +1,76 @@
+# Reusable: run a plugin's end-to-end test (its docker/e2e.sh: the agent in Docker, the plugin
+# installed, a scripted model from e2e/scripted_model.py) and, when it fails on a pull request
+# that updates the agent (Dependabot), say so on the pull request and mention who to notify.
+#
+# In a plugin repository:
+#
+#   jobs:
+#     e2e:
+#       uses: AgentLTL/agentltl-coding/.github/workflows/agent-e2e.yml@main
+#       with: {notify: some-github-login}
+#       permissions: {contents: read, pull-requests: write, issues: write}
+name: Agent end-to-end
+
+on:
+  workflow_call:
+    inputs:
+      notify:
+        description: GitHub login(s) to mention when an agent update breaks the plugin
+        type: string
+        default: ""
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - name: End-to-end test
+        env:
+          E2E_OUT: e2e-out          # docker/e2e.sh leaves the agent's output and the trace here
+        run: |
+          set -o pipefail
+          mkdir -p e2e-out
+          docker/e2e.sh 2>&1 | tee e2e.log
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: |
+            e2e.log
+            e2e-out/
+          if-no-files-found: ignore
+      - name: Say it on the pull request
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          NOTIFY: ${{ inputs.notify }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mention=""
+          for who in $NOTIFY; do mention="$mention @$who"; done
+          kind="This change"
+          [[ "$AUTHOR" == "dependabot[bot]" ]] && kind="This agent update"
+          {
+            echo "### :warning: $kind breaks the plugin's end-to-end test${mention:+ (cc$mention)}"
+            echo
+            echo "The agent ran the scripted session, but the plugin did not refuse what it should."
+            echo "Don't merge until the plugin is fixed. Log: $RUN"
+            echo
+            echo '<details><summary>Last lines</summary>'
+            echo
+            echo '```'
+            tail -n 40 e2e.log
+            echo '```'
+            echo '</details>'
+          } > comment.md
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file comment.md
+          gh label create breaks-plugin --repo "$GITHUB_REPOSITORY" --color B60205 \
+            --description "An agent update breaks the plugin" 2>/dev/null || true
+          gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --add-label breaks-plugin
+          for who in $NOTIFY; do gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --add-assignee "$who" || true; done

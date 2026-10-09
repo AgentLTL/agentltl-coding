@@ -67,6 +67,23 @@ if s.files:                                      # an AGENTLTL.yaml applies here
 harness can add commands. A library entry with `harnesses: [claude-code]` is for that agent
 only; elsewhere `use:` of it switches nothing on, so one project file serves every agent.
 
+## Testing a harness end to end
+
+`e2e/` lets a plugin test itself in the real agent, without a model or an account:
+
+- `e2e/scripted_model.py SCRIPT.json` serves the OpenAI chat-completions and Anthropic
+  messages formats (Mistral Vibe, Copilot CLI with a custom provider, Claude Code with
+  `ANTHROPIC_BASE_URL`) and answers each request with the next step of a script: tool calls,
+  then a final text.
+- `e2e/check.py TRACE EXPECTED` checks that `agentltl trace` shows the expected refusals, in
+  order.
+- `.github/workflows/agent-e2e.yml` is a reusable workflow: it runs the plugin's
+  `docker/e2e.sh` and, when that fails on a pull request (such as Dependabot's update of the
+  agent's version), says so on the pull request and mentions who to notify.
+
+Each plugin pins the agent version it tests in `docker/` (a `package.json` or a
+`requirements.txt`), so Dependabot proposes every new release as a pull request.
+
 ## Develop
 
 ```bash
