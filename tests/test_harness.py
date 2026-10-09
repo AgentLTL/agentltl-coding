@@ -125,6 +125,20 @@ def test_no_vibe_coauthor():
     assert [r.id for r in loads("use: [no-vibe-coauthor]").rules] == []
 
 
+def test_no_codex_coauthor():
+    codex = Harness(name="codex", agent="Codex", user_dir="~/.codex")
+
+    def go():
+        g = _guard("use: [no-codex-coauthor, no-vibe-coauthor]", "/p")
+        return [r.id for r in g.ruleset.rules], run(
+            g, "git commit -m x -m 'Co-authored-by: Codex <noreply@openai.com>'",
+            'git commit -m x -m "Generated with [Codex](https://openai.com/codex/)."',
+            'git commit -m "fix bug"')
+
+    assert with_harness(codex, go) == (["no-codex-coauthor"], ["deny", "deny", "none"])
+    assert [r.id for r in loads("use: [no-codex-coauthor]").rules] == []
+
+
 def test_auto_modes_and_project_env_come_from_the_harness(monkeypatch, tmp_path):
     from agentltl_coding.cli import _here
     from agentltl_coding.guard import is_auto

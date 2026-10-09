@@ -1,0 +1,11 @@
+summary: Codex never signs commits, tags or notes (no Co-authored-by, no "Generated with Codex").
+harnesses: [codex]
+tags: [git]
+rules:
+  - id: no-codex-coauthor
+    never: [git_commit, git_commit_tree, git_tag, git_notes, git_merge, git_revert, git_cherry_pick]
+    where:
+      "*": ["*[Cc]o-[Aa]uthored-[Bb]y*", "*noreply@openai.com*", "*[Gg]enerated with*[Cc]odex*",
+            "*[Cc]odex <*", "user.name=*[Cc]odex*", "user.email=*openai.com*"]
+    why: Codex should not appear in git history.
+    fix: Drop the Co-authored-by / "Generated with Codex" lines and commit as the user.

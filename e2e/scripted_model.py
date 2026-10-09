@@ -4,8 +4,12 @@ A scripted chat model for testing a harness end to end, without a real model or 
 
     python3 scripted_model.py SCRIPT.json [--port 8999] [--log DIR]
 
-It serves the two wire formats coding agents use:
+It serves the three wire formats coding agents use:
 
+- OpenAI responses (``POST /v1/responses``): Codex CLI with a custom provider
+  (``wire_api = "responses"``). A call ``{"name": "apply_patch", "input": "*** Begin Patch..."}``
+  (``input`` instead of ``args``) is a freeform tool call (``custom_tool_call``); a call's
+  ``namespace`` (Codex's ``multi_agent_v1``) is passed on.
 - OpenAI chat completions (``POST /v1/chat/completions``, ``GET /v1/models``): Mistral Vibe,
   GitHub Copilot CLI with a custom provider (``COPILOT_PROVIDER_BASE_URL``)...
 - Anthropic messages (``POST /v1/messages``, ``/v1/messages/count_tokens``): Claude Code with
@@ -64,6 +68,30 @@ def step_for(script: Dict[str, List[Dict[str, Any]]], messages: List[Dict[str, A
     return steps[min(n, len(steps) - 1)]
 
 
+def responses_messages(items: List[Any]) -> List[Dict[str, Any]]:
+    """A responses ``input`` as chat messages for :func:`step_for`: each model turn (an
+    assistant message, or the tool calls of one step, whose ids carry the step number)
+    becomes one assistant message."""
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        kind = it.get("type", "message")
+        if kind == "message" and it.get("role") in ("user", "assistant"):
+            out.append({"role": it["role"], "content": it.get("content")})
+        elif kind in ("function_call", "custom_tool_call"):
+            tag = str(it.get("call_id", "")).split("_")[:2]
+            key = tag[1] if len(tag) == 2 and tag[0] == "call" else it.get("call_id")
+            if key not in seen:
+                seen.add(key)
+                out.append({"role": "assistant", "content": ""})
+    users = [m for m in out if m["role"] == "user" and "CHILD" in _text_of(m["content"])]
+    if users:  # the subagent's task may follow context messages: put it first
+        out = [users[0]] + [m for m in out if m is not users[0]]
+    return out
+
+
 class Handler(BaseHTTPRequestHandler):
     script: Dict[str, List[Dict[str, Any]]] = {}
     log_dir = ""
@@ -108,6 +136,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"input_tokens": 10})
         if path.endswith("/messages"):
             return self._anthropic(req)
+        if path.endswith("/responses"):
+            return self._responses(req)
         return self._openai(req)
 
     def _step(self, req: Dict[str, Any]) -> Dict[str, Any]:
@@ -142,6 +172,60 @@ class Handler(BaseHTTPRequestHandler):
         self._sse({**chunk, "choices": [{"index": 0, "delta": {}, "finish_reason": finish}],
                    "usage": USAGE_OPENAI})
         self._sse(b"[DONE]")
+
+    # ── OpenAI responses ──────────────────────────────────────────────────────
+
+    def _responses(self, req: Dict[str, Any]) -> None:
+        items = req.get("input") or []
+        if isinstance(items, str):
+            items = [{"type": "message", "role": "user", "content": items}]
+        if not req.get("tools"):
+            step: Dict[str, Any] = {"text": "ok"}
+        else:
+            step = step_for(self.script, responses_messages(items))
+        n = sum(1 for m in responses_messages(items) if m["role"] == "assistant")
+        out: List[Dict[str, Any]] = []
+        for c in step.get("calls") or []:
+            call_id = f"call_{n}_{uuid.uuid4().hex[:8]}"
+            if "input" in c:
+                item = {"type": "custom_tool_call", "id": "ctc_" + uuid.uuid4().hex[:12],
+                        "status": "completed", "call_id": call_id, "name": c["name"],
+                        "input": c["input"]}
+            else:
+                item = {"type": "function_call", "id": "fc_" + uuid.uuid4().hex[:12],
+                        "status": "completed", "call_id": call_id, "name": c["name"],
+                        "arguments": json.dumps(c["args"])}
+            if c.get("namespace"):
+                item["namespace"] = c["namespace"]
+            out.append(item)
+        if not out:  # a step's text counts only when it makes no calls: one turn, one marker
+            out.append({"type": "message", "id": "msg_" + uuid.uuid4().hex[:12],
+                        "status": "completed", "role": "assistant",
+                        "content": [{"type": "output_text", "text": step.get("text") or "ok",
+                                     "annotations": []}]})
+        rid = "resp_" + uuid.uuid4().hex[:12]
+        usage = {"input_tokens": 10, "input_tokens_details": {"cached_tokens": 0},
+                 "output_tokens": 5, "output_tokens_details": {"reasoning_tokens": 0},
+                 "total_tokens": 15}
+        response = {"id": rid, "object": "response", "created_at": int(time.time()),
+                    "model": req.get("model") or "scripted", "status": "completed",
+                    "output": out, "usage": usage}
+        if not req.get("stream"):
+            return self._json(response)
+        self._sse_start()
+        self._sse({"type": "response.created",
+                   "response": {**response, "status": "in_progress", "output": []}},
+                  "response.created")
+        for i, item in enumerate(out):
+            self._sse({"type": "response.output_item.added", "output_index": i, "item": item},
+                      "response.output_item.added")
+            if item["type"] == "message":
+                self._sse({"type": "response.output_text.delta", "output_index": i,
+                           "content_index": 0, "delta": item["content"][0]["text"]},
+                          "response.output_text.delta")
+            self._sse({"type": "response.output_item.done", "output_index": i, "item": item},
+                      "response.output_item.done")
+        self._sse({"type": "response.completed", "response": response}, "response.completed")
 
     # ── Anthropic messages ────────────────────────────────────────────────────
 

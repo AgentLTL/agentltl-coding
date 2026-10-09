@@ -72,6 +72,44 @@ def test_anthropic(url):
     assert json.loads(post(url, "/v1/messages/count_tokens", {}))["input_tokens"] == 10
 
 
+def test_responses(url, tmp_path):
+    script = tmp_path / "r.json"
+    script.write_text(json.dumps({"steps": [
+        {"calls": [{"name": "exec_command", "args": {"cmd": "ls"}},
+                   {"name": "apply_patch", "input": "*** Begin Patch\n*** End Patch\n"}]},
+        {"calls": [{"name": "spawn_agent", "namespace": "multi_agent_v1",
+                    "args": {"message": "CHILD: look"}}]},
+        {"text": "Done."}], "child": [{"text": "child done"}]}))
+    sm.Handler.script = sm.load(str(script))
+    tools = [{"type": "function", "name": "exec_command"}]
+
+    def msg(role, text):
+        return {"type": "message", "role": role, "content": [{"type": "input_text", "text": text}]}
+
+    context = [msg("developer", "rules"), msg("user", "<environment_context>"), msg("user", "go")]
+    first = events(post(url, "/v1/responses", {"stream": True, "tools": tools, "input": context}))
+    kinds = [e["type"] for e in first]
+    assert kinds[0] == "response.created" and kinds[-1] == "response.completed"
+    items = [e["item"] for e in first if e["type"] == "response.output_item.done"]
+    assert [(i["type"], i["name"]) for i in items] == [("function_call", "exec_command"),
+                                                       ("custom_tool_call", "apply_patch")]
+    assert json.loads(items[0]["arguments"]) == {"cmd": "ls"}
+    assert items[1]["input"].startswith("*** Begin Patch")
+    # the two calls of step 0 are one model turn
+    done = context + items + [{"type": "function_call_output", "call_id": i["call_id"],
+                               "output": "x"} for i in items]
+    second = json.loads(post(url, "/v1/responses", {"tools": tools, "input": done}))
+    assert second["output"][0]["namespace"] == "multi_agent_v1"
+    third = json.loads(post(url, "/v1/responses", {"tools": tools,
+                                                   "input": done + second["output"]}))
+    assert third["output"][0]["content"][0]["text"] == "Done."
+    child = json.loads(post(url, "/v1/responses", {"tools": tools, "input": context[:2] + [
+        msg("user", "CHILD: look")]}))
+    assert child["output"][0]["content"][0]["text"] == "child done"
+    untooled = json.loads(post(url, "/v1/responses", {"input": "title?"}))
+    assert untooled["output"][0]["content"][0]["text"] == "ok"
+
+
 def test_a_request_without_tools_gets_text(url):
     out = json.loads(post(url, "/v1/messages", {"messages": [{"role": "user", "content": "title?"}]}))
     assert out["stop_reason"] == "end_turn"

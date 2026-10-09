@@ -23,10 +23,11 @@ library of tested rules, and a guard that decides each tool call before it runs.
   `ask` (you decide), `retry` (then you decide), `stop`, `log`.
 - **Memory:** each rule reads the calls of this session, or of the project across sessions.
 
-Three harnesses are built on it: the
+Four harnesses are built on it: the
 [Claude Code plugin](https://github.com/AgentLTL/agentltl-claude-code), the
-[GitHub Copilot CLI plugin](https://github.com/AgentLTL/agentltl-copilot-cli) and the
-[Mistral Vibe plugin](https://github.com/AgentLTL/agentltl-mistral-vibe). The full rule
+[GitHub Copilot CLI plugin](https://github.com/AgentLTL/agentltl-copilot-cli), the
+[Mistral Vibe plugin](https://github.com/AgentLTL/agentltl-mistral-vibe) and the
+[Codex plugin](https://github.com/AgentLTL/agentltl-codex). The full rule
 reference is on [agentltl.github.io](https://agentltl.github.io/rules/).
 
 ## A harness in a few lines
@@ -71,9 +72,9 @@ only; elsewhere `use:` of it switches nothing on, so one project file serves eve
 
 `e2e/` lets a plugin test itself in the real agent, without a model or an account:
 
-- `e2e/scripted_model.py SCRIPT.json` serves the OpenAI chat-completions and Anthropic
-  messages formats (Mistral Vibe, Copilot CLI with a custom provider, Claude Code with
-  `ANTHROPIC_BASE_URL`) and answers each request with the next step of a script: tool calls,
+- `e2e/scripted_model.py SCRIPT.json` serves the OpenAI chat-completions, OpenAI responses
+  and Anthropic messages formats (Mistral Vibe, Copilot CLI with a custom provider, Codex with
+  `wire_api = "responses"`, Claude Code with `ANTHROPIC_BASE_URL`) and answers each request with the next step of a script: tool calls,
   then a final text.
 - `e2e/check.py TRACE EXPECTED` checks that `agentltl trace` shows the expected refusals, in
   order.
