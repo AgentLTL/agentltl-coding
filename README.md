@@ -40,7 +40,13 @@ plugin's README into your agent ([Claude Code](https://github.com/AgentLTL/agent
 harness for another agent, paste this into your coding agent:
 
 ```
-Install agentltl-coding (pip install "git+https://github.com/AgentLTL/agentltl-coding.git" in a virtual environment) and read its README at https://github.com/AgentLTL/agentltl-coding, then help me write a harness for my agent.
+Install agentltl-coding (pip install agentltl-coding, in a virtual environment) and read its README at https://github.com/AgentLTL/agentltl-coding, then help me write a harness for my agent.
+```
+
+Or install it yourself:
+
+```bash
+pip install agentltl-coding      # also installs agentltl and cli-to-tools
 ```
 
 ## A harness in a few lines
