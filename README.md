@@ -30,6 +30,19 @@ Four harnesses are built on it: the
 [Codex plugin](https://github.com/AgentLTL/agentltl-codex). The full rule
 reference is on [agentltl.github.io](https://agentltl.github.io/rules/).
 
+## Installation
+
+Most people want a plugin for their agent, not this library: paste the prompt from the
+plugin's README into your agent ([Claude Code](https://github.com/AgentLTL/agentltl-claude-code#installation),
+[Codex](https://github.com/AgentLTL/agentltl-codex#installation),
+[Copilot CLI](https://github.com/AgentLTL/agentltl-copilot-cli#installation),
+[Mistral Vibe](https://github.com/AgentLTL/agentltl-mistral-vibe#installation)). To build a
+harness for another agent, paste this into your coding agent:
+
+```
+Install agentltl-coding (pip install "git+https://github.com/AgentLTL/agentltl-coding.git" in a virtual environment) and read its README at https://github.com/AgentLTL/agentltl-coding, then help me write a harness for my agent.
+```
+
 ## A harness in a few lines
 
 ```python
