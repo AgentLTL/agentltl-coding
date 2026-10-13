@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import posixpath
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -274,15 +275,22 @@ def _glob(value: str, pattern: str, paths: Paths) -> bool:
     return False
 
 
+def _slashes(path: str) -> str:
+    """*path* with ``/`` separators: globs are written with ``/``, and on Windows paths come
+    with ``\\``."""
+    return path.replace("\\", "/") if os.sep == "\\" else path
+
+
 def _forms(value: str, paths: Paths, basename: bool) -> Sequence[str]:
-    forms = [value]
+    forms = [_slashes(value)]
     if value and not value.startswith(("-", "http://", "https://")):
-        absolute = _absolute(value, paths)
+        absolute = _slashes(_absolute(value, paths))
+        root = _slashes(paths.root).rstrip("/")
         forms.append(absolute)
-        if paths.root and (absolute == paths.root or absolute.startswith(paths.root + os.sep)):
-            forms.append(os.path.relpath(absolute, paths.root))
+        if root and (absolute == root or absolute.startswith(root + "/")):
+            forms.append(absolute[len(root):].lstrip("/") or ".")
         if basename:
-            forms.append(os.path.basename(absolute))
+            forms.append(posixpath.basename(absolute))
     return forms
 
 
