@@ -14,15 +14,49 @@ environment), else ``~/.cache/agentltl-<harness>/sessions``.
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
 import os
 import re
 import sys
 import tempfile
+import time
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, List, Optional
+
+if os.name == "nt":
+    import msvcrt
+
+    def _lock_exclusive(fh) -> None:
+        """Block until this process holds an exclusive lock on *fh*; closing it releases it."""
+        deadline = time.monotonic() + 60
+        while True:
+            try:
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                return
+            except OSError:
+                if time.monotonic() > deadline:
+                    raise
+                time.sleep(0.05)
+else:
+    import fcntl
+
+    def _lock_exclusive(fh) -> None:
+        """Block until this process holds an exclusive lock on *fh*; closing it releases it."""
+        fcntl.flock(fh, fcntl.LOCK_EX)
+
+
+def _replace(tmp: str, path: str) -> None:
+    """os.replace, retrying on Windows, which refuses while another process reads *path*."""
+    for attempt in range(100):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if os.name != "nt" or attempt == 99:
+                raise
+            time.sleep(0.02)
 
 
 def state_dir() -> str:
@@ -67,13 +101,13 @@ def read_project(project_dir: str) -> Dict[str, Any]:
 def _locked(path: str) -> Iterator[Dict[str, Any]]:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path + ".lock", "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        _lock_exclusive(lock)
         state = _read(path)
         yield state
         fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(state, fh, default=str)
-        os.replace(tmp, path)
+        _replace(tmp, path)
 
 
 @contextmanager
