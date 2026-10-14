@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentltl-coding"
-version = "0.2.4"
+version = "0.2.5"
 description = "AgentLTL rules for coding agents: the AGENTLTL.yaml language, a rule library, and a guard any harness can call."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
     "agentltl>=0.2",
-    "cli-to-tools>=0.2",
+    "cli-to-tools>=0.2.2",
     "pyyaml>=6.0",
 ]
 
