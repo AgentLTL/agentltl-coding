@@ -25,7 +25,10 @@ from contextlib import contextmanager
 from typing import Any, Dict, Iterator, List, Optional
 
 if os.name == "nt":
+    import errno
     import msvcrt
+
+    _CONTENTION = {errno.EACCES, errno.EDEADLK, getattr(errno, "EDEADLOCK", errno.EDEADLK)}
 
     def _lock_exclusive(fh) -> None:
         """Block until this process holds an exclusive lock on *fh*; closing it releases it."""
@@ -35,8 +38,10 @@ if os.name == "nt":
                 fh.seek(0)
                 msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
                 return
-            except OSError:
-                if time.monotonic() > deadline:
+            except OSError as exc:
+                # Another process holds the lock (EACCES, or EDEADLOCK after msvcrt's own
+                # retries): wait. Any other error cannot recover, so surface it now.
+                if exc.errno not in _CONTENTION or time.monotonic() > deadline:
                     raise
                 time.sleep(0.05)
 else:
