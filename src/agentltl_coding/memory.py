@@ -305,10 +305,11 @@ def shown_path(path: str, root: str, home: Optional[str] = None) -> str:
     """*path* relative to the project, or from ``~``: how ``from:`` names a file."""
     path, root = os.path.abspath(path), os.path.abspath(root)
     home = os.path.abspath(home or os.path.expanduser("~"))
+    # With / on every platform: a `from:` goes into a rule file that is committed and shared.
     if path.startswith(root + os.sep) and root != home:
-        return os.path.relpath(path, root)
+        return os.path.relpath(path, root).replace(os.sep, "/")
     if path.startswith(home + os.sep):
-        return "~/" + os.path.relpath(path, home)
+        return "~/" + os.path.relpath(path, home).replace(os.sep, "/")
     return path
 
 
