@@ -1,0 +1,12 @@
+# Pull requests for new versions of the GitHub Actions the workflows use, and for Python
+# dependencies; vulnerabilities in either also arrive as Dependabot alerts.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
