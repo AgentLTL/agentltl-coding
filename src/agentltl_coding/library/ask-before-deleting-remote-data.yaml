@@ -1,0 +1,13 @@
+summary: Ask before deleting something that lives elsewhere (a repository, release, remote branch or tag, S3 bucket, connector record).
+tags: [data, git]
+rules:
+  - id: ask-before-deleting-remote-data
+    never:
+      - gh_repo_delete
+      - gh_release_delete
+      - aws_s3_rb
+      - {tool: git_push, with: {delete: true}}
+      - "*_delete_*"
+    why: What is deleted at the other end often has no trash and no copy.
+    fix: Say exactly what would be deleted and let the user run it or approve it.
+    mode: ask

@@ -1,0 +1,8 @@
+summary: At most 8 sub-agent calls (Agent or Task) per session; the 9th is refused once, and may be repeated on purpose.
+tags: [budget]
+rules:
+  - id: limit-subagents
+    at_most: {call: [Agent, Task], times: 8}
+    why: Each sub-agent is a full run of its own, with its own cost.
+    fix: Do the remaining work yourself, or ask the user to allow more sub-agents.
+    mode: warn

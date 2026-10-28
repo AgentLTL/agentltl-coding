@@ -1,0 +1,63 @@
+# Template: prescriptions, for a clinical assistant whose tools come from an MCP server.
+#
+# Rename the tools to yours (here: the server `clinic`): mcp__clinic__verify_patient_identity,
+# check_allergies, check_interactions, check_dosage, prescribe, prescribe_controlled,
+# physician_approval, update_medical_record.
+#
+# Every check holds for EVERY prescription (prescribe and prescribe_controlled alike): it must
+# come after the previous prescription. A rule only knows that a check ran, not what it found:
+# make the check tools themselves refuse to pass on a problem.
+
+rules:
+  - id: identity-before-prescription
+    before:
+      first: mcp__clinic__verify_patient_identity
+      then: [mcp__clinic__prescribe, mcp__clinic__prescribe_controlled]
+      since: [mcp__clinic__prescribe, mcp__clinic__prescribe_controlled]
+    mode: stop
+    why: The patient is identified before every prescription.
+    fix: Call verify_patient_identity, then prescribe.
+
+  - id: allergies-before-prescription
+    before:
+      first: mcp__clinic__check_allergies
+      then: [mcp__clinic__prescribe, mcp__clinic__prescribe_controlled]
+      since: [mcp__clinic__prescribe, mcp__clinic__prescribe_controlled]
+    mode: stop
+    why: Allergies are checked before every prescription.
+    fix: Call check_allergies for this patient.
+
+  - id: interactions-before-prescription
+    before:
+      first: mcp__clinic__check_interactions
+      then: [mcp__clinic__prescribe, mcp__clinic__prescribe_controlled]
+      since: [mcp__clinic__prescribe, mcp__clinic__prescribe_controlled]
+    mode: stop
+    why: Drug interactions are checked before every prescription.
+    fix: Call check_interactions with the current medication.
+
+  - id: dosage-before-prescription
+    before:
+      first: mcp__clinic__check_dosage
+      then: [mcp__clinic__prescribe, mcp__clinic__prescribe_controlled]
+      since: [mcp__clinic__prescribe, mcp__clinic__prescribe_controlled]
+    mode: stop
+    why: The dosage is checked against the patient before every prescription.
+    fix: Call check_dosage for this drug and patient.
+
+  - id: physician-for-controlled
+    before:
+      first: mcp__clinic__physician_approval
+      then: mcp__clinic__prescribe_controlled
+      since: mcp__clinic__prescribe_controlled
+    mode: ask
+    why: Each controlled substance is prescribed only with a physician approval.
+    fix: Call physician_approval, then prescribe_controlled.
+
+  # Traceability: checked when the agent is about to finish.
+  - id: record-after-prescription
+    finally:
+      call: mcp__clinic__update_medical_record
+      since: [mcp__clinic__prescribe, mcp__clinic__prescribe_controlled]
+    why: A prescription is written to the medical record.
+    fix: Call update_medical_record with the prescription.

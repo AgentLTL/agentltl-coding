@@ -1,0 +1,8 @@
+summary: At most 300 tool calls per session, of any kind; the 301st is refused once, and may be repeated on purpose.
+tags: [budget]
+rules:
+  - id: tool-call-budget
+    at_most: {call: "*", times: 300}
+    why: A session that has made 300 calls is usually looping or off track.
+    fix: Stop and tell the user where things stand, then continue only if they say so. Change the number by copying this rule into the project file with your own `times`.
+    mode: warn

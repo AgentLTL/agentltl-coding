@@ -1,0 +1,8 @@
+summary: "Theme: a person approves what cannot be undone (publishing, sending messages, deleting remote data, discarding work, recursive delete)."
+tags: [theme, bundle, communication]
+include:
+  - ask-before-publishing
+  - ask-before-sending-messages
+  - ask-before-deleting-remote-data
+  - ask-before-discarding-work
+  - ask-before-recursive-delete

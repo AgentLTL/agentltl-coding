@@ -1,0 +1,10 @@
+summary: Run terraform plan before every apply or destroy (each one needs its own plan).
+tags: [cloud, devops]
+rules:
+  - id: plan-before-apply
+    before:
+      first: terraform_plan
+      then: [terraform_apply, terraform_destroy]
+      since: [terraform_apply, terraform_destroy]
+    why: An apply that was not planned just before changes things nobody has looked at.
+    fix: Run terraform plan, read it, then apply. Each apply or destroy needs a plan made since the previous one.

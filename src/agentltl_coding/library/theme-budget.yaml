@@ -1,0 +1,7 @@
+summary: "Theme: bounded work (read before overwriting; limits on sub-agents, web searches and total tool calls)."
+tags: [theme, bundle, budget]
+include:
+  - read-before-overwrite
+  - limit-subagents
+  - limit-web-searches
+  - tool-call-budget

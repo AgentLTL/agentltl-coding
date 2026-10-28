@@ -1,0 +1,5 @@
+summary: "Theme: answer from the project first (search the project before the web, limit web searches)."
+tags: [theme, bundle, research]
+include:
+  - internal-before-web
+  - limit-web-searches

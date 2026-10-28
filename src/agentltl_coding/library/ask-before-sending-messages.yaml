@@ -1,0 +1,8 @@
+summary: Ask before sending an email or message (mail, sendmail, and connector tools whose name has send, post or publish in it).
+tags: [communication]
+rules:
+  - id: ask-before-sending-messages
+    never: [mail, sendmail, "*_send_*", "*_post_*", "*_publish_*"]
+    why: A message sent is read by someone, and cannot be called back.
+    fix: Show the user the message and who it goes to, and send it only once they approve.
+    mode: ask

@@ -1,0 +1,10 @@
+summary: "Theme: ship safely (tests before push, no force push, nothing to main by name, plan before apply, ask before infrastructure, prod targets and publishing)."
+tags: [theme, bundle, devops, git]
+include:
+  - tests-before-push
+  - no-force-push
+  - no-push-to-main
+  - plan-before-apply
+  - ask-before-infra-changes
+  - ask-before-prod-targets
+  - ask-before-publishing

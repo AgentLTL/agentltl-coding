@@ -1,0 +1,6 @@
+summary: "Theme: keep data safe (secrets rules, ask before uploading data files, dump before dropdb)."
+tags: [theme, bundle, data, secrets]
+include:
+  - devops-secrets
+  - ask-before-uploading-data-files
+  - backup-before-dropdb
