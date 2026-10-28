@@ -1,0 +1,15 @@
+summary: Ask before a data file (csv, tsv, sql, dump, parquet, sqlite, db, xlsx, jsonl, bak) leaves the machine by scp, rsync, aws s3, curl or a gist.
+tags: [data]
+rules:
+  - id: ask-before-uploading-data-files
+    never:
+      - {tool: [scp, rsync], where: {sources: &data ["*.csv", "*.tsv", "*.sql", "*.dump", "*.parquet", "*.sqlite", "*.sqlite3", "*.db", "*.xlsx", "*.jsonl", "*.bak"], destination: ["*:*"]}}
+      - {tool: [aws_s3_cp, aws_s3_mv], where: {source: *data, destination: ["s3://*"]}}
+      - {tool: aws_s3_sync, where: {source: *data}}
+      - {tool: curl, where: {upload_file: *data}}
+      - {tool: curl, where: {data: ["*.csv", "*.tsv", "*.sql", "*.dump", "*.parquet", "*.sqlite", "*.sqlite3", "*.db", "*.xlsx", "*.jsonl", "*.bak"]}}
+      - {tool: curl, where: {form: ["*.csv", "*.tsv", "*.sql", "*.dump", "*.parquet", "*.sqlite", "*.sqlite3", "*.db", "*.xlsx", "*.jsonl", "*.bak"]}}
+      - {tool: gh_gist_create, where: {files: *data}}
+    why: Data files often hold personal or customer data, and once uploaded they cannot be called back.
+    fix: Say which file would go where, and let the user run it or approve it. Anonymize or sample the data first if it can leave in that form.
+    mode: ask

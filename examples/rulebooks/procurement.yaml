@@ -1,0 +1,39 @@
+# Template: purchasing and anti-corruption, for an agent whose tools come from an MCP server.
+#
+# Rename the tools to yours (here: the server `erp`): mcp__erp__request_quote, check_budget,
+# check_conflict_of_interest, award_contract, accept_gift, register_gift.
+#
+# The three quotes are counted as requests, not as different bidders.
+
+rules:
+  - id: conflict-check-before-award
+    before:
+      first: mcp__erp__check_conflict_of_interest
+      then: mcp__erp__award_contract
+      since: mcp__erp__award_contract
+    mode: stop
+    why: No contract is awarded before a conflict-of-interest check.
+    fix: Call check_conflict_of_interest for the bidders.
+
+  - id: budget-check-before-award
+    before:
+      first: mcp__erp__check_budget
+      then: mcp__erp__award_contract
+      since: mcp__erp__award_contract
+    why: The budget line is checked before committing to a contract.
+    fix: Call check_budget for this purchase.
+
+  - id: three-quotes-before-award
+    ltl: 'G(now("mcp__erp__award_contract") -> count_before(now("mcp__erp__request_quote"), >= 3))'
+    why: A contract is awarded after at least 3 quotes were requested.
+    fix: Request more quotes before awarding.
+
+  - id: one-award-per-session
+    at_most: {call: mcp__erp__award_contract, times: 1}
+    why: One award per purchase.
+    fix: The contract is already awarded; do not award it again.
+
+  - id: register-accepted-gifts
+    finally: {call: mcp__erp__register_gift, since: mcp__erp__accept_gift}
+    why: An accepted gift is registered before the work is handed back.
+    fix: Call register_gift for the gift that was accepted.

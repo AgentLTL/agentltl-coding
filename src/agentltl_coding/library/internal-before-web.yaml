@@ -1,0 +1,10 @@
+summary: Search the project (Grep, Glob or Read) before the first web search or fetch.
+tags: [research]
+rules:
+  - id: internal-before-web
+    before:
+      first: [Grep, Glob, Read]
+      then: [WebSearch, WebFetch]
+    why: The answer is often in the project already, and the project's version of it is the one that applies.
+    fix: Search the project first (Grep, Glob, Read); go to the web only if it does not have the answer.
+    mode: warn

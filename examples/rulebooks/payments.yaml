@@ -1,0 +1,60 @@
+# Template: payments and trading, for an agent whose bank / ERP tools come from an MCP server.
+#
+# Rename the tools to yours (here: the server `bank`): mcp__bank__verify_identity,
+# check_sanctions, match_invoice, approve_payment (with a `role` argument), add_beneficiary,
+# callback_verification, execute_payment, get_quote, place_order. Copy this file to
+# AGENTLTL.yaml (or merge the rules into yours) and run `agentltl validate`.
+#
+# Every gate holds for EVERY payment: `since: execute_payment` asks for the check to come after
+# the previous payment. An amount threshold cannot be written: `where` compares text, not numbers.
+
+rules:
+  - id: identity-before-payment
+    before: {first: mcp__bank__verify_identity, then: mcp__bank__execute_payment, since: mcp__bank__execute_payment}
+    why: The payee is identified before each payment.
+    fix: Call verify_identity for the payee, then pay.
+
+  - id: sanctions-before-payment
+    before: {first: mcp__bank__check_sanctions, then: mcp__bank__execute_payment, since: mcp__bank__execute_payment}
+    why: The payee is screened against sanctions lists before each payment.
+    fix: Call check_sanctions for the payee, then pay.
+
+  - id: invoice-match-before-payment
+    before: {first: mcp__bank__match_invoice, then: mcp__bank__execute_payment, since: mcp__bank__execute_payment}
+    why: A payment settles an invoice matched to its order and receipt.
+    fix: Call match_invoice for this invoice, then pay.
+
+  # Four eyes: two approvals from two different roles, not one role twice.
+  - id: finance-approval-before-payment
+    before:
+      first: {tool: mcp__bank__approve_payment, with: {role: finance}}
+      then: mcp__bank__execute_payment
+      since: mcp__bank__execute_payment
+    why: A payment needs the finance approval.
+    fix: Get approve_payment with role finance, then pay.
+
+  - id: manager-approval-before-payment
+    before:
+      first: {tool: mcp__bank__approve_payment, with: {role: manager}}
+      then: mcp__bank__execute_payment
+      since: mcp__bank__execute_payment
+    why: A payment needs the manager approval too.
+    fix: Get approve_payment with role manager, then pay.
+
+  # Anti-fraud (fake supplier, changed bank details): after every add_beneficiary, a call-back
+  # to a known contact comes before any payment; a beneficiary added later needs a new one.
+  - id: callback-after-new-beneficiary
+    ltl: 'G(now("mcp__bank__execute_payment") -> (!O(now("mcp__bank__add_beneficiary")) | ((!now("mcp__bank__add_beneficiary")) S now("mcp__bank__callback_verification"))))'
+    why: A new beneficiary is confirmed by a call-back to a known contact before it is paid.
+    fix: Call callback_verification for the beneficiary you added, then pay.
+
+  - id: one-payment-per-session
+    at_most: {call: mcp__bank__execute_payment, times: 1}
+    why: A payment is executed once (no duplicates).
+    fix: The payment was already executed; do not repeat it.
+
+  # The call just before: the quote is fresh.
+  - id: fresh-quote-before-order
+    ltl: 'G(now("mcp__bank__place_order") -> Y(now("mcp__bank__get_quote")))'
+    why: An order is placed right after a quote.
+    fix: Call get_quote immediately before place_order.

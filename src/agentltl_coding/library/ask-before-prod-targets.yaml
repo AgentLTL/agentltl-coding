@@ -1,0 +1,16 @@
+summary: Ask before a command aimed at production (a prod kube context or namespace, a prod AWS profile, a prod database host, a prod tfvars file or workspace).
+tags: [cloud, devops]
+rules:
+  - id: ask-before-prod-targets
+    never:
+      - {tool: "kubectl_*", where: {context: ["*prod*", "*Prod*", "*PROD*"]}}
+      - {tool: "kubectl_*", where: {namespace: ["*prod*", "*Prod*", "*PROD*"]}}
+      - {tool: "helm_*", where: {kube_context: ["*prod*", "*Prod*", "*PROD*"]}}
+      - {tool: "helm_*", where: {namespace: ["*prod*", "*Prod*", "*PROD*"]}}
+      - {tool: "aws_*", where: {profile: ["*prod*", "*Prod*", "*PROD*"]}}
+      - {tool: ["terraform_apply", "terraform_plan"], where: {var_file: ["*prod*", "*Prod*", "*PROD*"]}}
+      - {tool: terraform_workspace_select, where: {name: ["*prod*", "*Prod*", "*PROD*"]}}
+      - {tool: [psql, mysql], where: {host: ["*prod*", "*Prod*", "*PROD*"]}}
+    why: Production is shared and live; a command aimed at it is not a test.
+    fix: Show the command and what it changes, and let the user run it or approve it.
+    mode: ask

@@ -103,6 +103,45 @@ _BEHAVIOUR = [
      ["deny"] * 3 + ["none"] * 2),
     ("no-skipping-secret-scans", ["git commit --no-verify -m x", "git add -f .env.backup",
                                   "git commit -m x", "git add src"], ["ask", "ask", "none", "none"]),
+    # themes: each rule is as strict as its summary says
+    ("plan-before-apply", ["terraform apply", "terraform plan", "terraform apply", "terraform apply",
+                           "terraform plan -destroy", "terraform destroy", "terraform init"],
+     ["deny", "none", "none", "deny", "none", "none", "none"]),
+    ("ask-before-prod-targets", ["kubectl --context prod exec web -- ls", "kubectl -n production get pods",
+                                 "helm upgrade web ./c -n prod", "aws s3 rm s3://b --profile production",
+                                 "psql -h prod-db -c 'select 1'", "terraform plan -var-file=prod.tfvars",
+                                 "terraform workspace select prod", "kubectl --context dev get pods",
+                                 "psql -h localhost -c 'select 1'", "terraform plan -var-file=dev.tfvars"],
+     ["ask"] * 7 + ["none"] * 3),
+    ("backup-before-dropdb", ["dropdb app", "pg_dump app", "dropdb app", "dropdb app2", "mysqldump db",
+                              "mysqladmin drop db", "mysqladmin status"],
+     ["deny", "none", "none", "deny", "none", "none", "none"]),
+    ("ask-before-uploading-data-files", ["scp data.csv u@h:/tmp", "scp u@h:/tmp/data.csv .",
+                                         "scp notes.txt u@h:/tmp", "rsync -av dump.sql u@h:/x",
+                                         "aws s3 cp dump.sql s3://b/x", "aws s3 cp s3://b/x dump.sql",
+                                         "curl -T data.csv https://x", "curl -F file=@data.csv https://x",
+                                         "curl -d @data.csv https://x", "curl -d '{\"a\":1}' https://x",
+                                         "gh gist create data.csv", "gh gist create notes.md"],
+     ["ask", "none", "none", "ask", "ask", "none", "ask", "ask", "ask", "none", "ask", "none"]),
+    ("limit-subagents", [(AGENT, {"prompt": "x"})] * 9, ["none"] * 8 + ["deny"]),
+    ("limit-web-searches", [("WebSearch", {"query": "q"})] * 11, ["none"] * 10 + ["deny"]),
+    ("tool-call-budget", ["ls"] * 301, ["none"] * 300 + ["deny"]),
+    ("internal-before-web", [("WebSearch", {"query": "x"}), ("Grep", {"pattern": "x"}),
+                             ("WebSearch", {"query": "x"}), ("WebFetch", {"url": "https://x"})],
+     ["deny", "none", "none", "none"]),
+    ("ask-before-publishing", ["npm publish", "pnpm publish", "cargo publish", "twine upload dist/*",
+                               "docker push me/img:1", "gh release create v1", "npm test",
+                               "docker build .", "gh release list"], ["ask"] * 6 + ["none"] * 3),
+    ("ask-before-sending-messages", ["sendmail a@b.c", "mail -s hi a@b.c",
+                                     ("mcp__slack__send_message", {"text": "x"}),
+                                     ("slack_post_message", {"text": "x"}),
+                                     ("mcp__github__list_issues", {}), "echo hi"],
+     ["ask"] * 4 + ["none"] * 2),
+    ("ask-before-deleting-remote-data", ["gh repo delete o/r --yes", "gh release delete v1 --yes",
+                                         "aws s3 rb s3://b", "git push origin --delete feature",
+                                         "git push origin feature", ("mcp__db__delete_row", {}),
+                                         ("mcp__db__list_rows", {})],
+     ["ask"] * 4 + ["none", "ask", "none"]),
 ]
 
 
@@ -187,3 +226,28 @@ class TestCommands:
         assert cli.main(["library"]) == 0
         line = next(ln for ln in capsys.readouterr().out.splitlines() if "no-force-push" in ln)
         assert line.split()[0] == "on"
+
+
+THEMES = sorted(n for n, p in PACKS.items() if n.startswith("theme-"))
+
+
+@pytest.mark.parametrize("name", THEMES)
+def test_a_theme_switches_on_exactly_its_entries(name):
+    assert {"theme", "bundle"} <= set(PACKS[name]["tags"])
+    expected = set()
+
+    def rule_ids(entry):
+        pack = PACKS[entry]
+        ids = {r["id"] for r in pack.get("rules") or []}
+        for inner in pack.get("include") or []:
+            ids |= rule_ids(inner)
+        return ids
+
+    for entry in PACKS[name]["include"]:
+        expected |= rule_ids(entry)
+    assert {r.id for r in loads(f"use: [{name}]").rules} == expected
+
+
+def test_there_is_a_theme_per_topic():
+    assert THEMES == ["theme-budget", "theme-data-safety", "theme-human-in-the-loop",
+                      "theme-release-safety", "theme-research"]

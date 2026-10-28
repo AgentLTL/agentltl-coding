@@ -1,0 +1,8 @@
+summary: At most 10 web searches per session; the 11th is refused once, and may be repeated on purpose.
+tags: [budget, research]
+rules:
+  - id: limit-web-searches
+    at_most: {call: WebSearch, times: 10}
+    why: Searching again and again is a sign of a question that needs narrowing, and it costs.
+    fix: Answer from what you have found, or ask the user to narrow the question.
+    mode: warn

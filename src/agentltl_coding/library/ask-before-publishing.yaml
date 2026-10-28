@@ -1,0 +1,12 @@
+summary: Ask before publishing a package, image or release (npm/pnpm/yarn/cargo/uv publish, twine upload, docker push, gh release create).
+tags: [release, devops]
+rules:
+  - id: ask-before-publishing
+    never:
+      - {tool: [npm, pnpm, yarn, cargo, uv], with: {argv: publish}}
+      - {tool: twine, with: {argv: upload}}
+      - docker_push
+      - gh_release_create
+    why: Anything published is public or shared at once, and a published version cannot be taken back.
+    fix: Show what would be published and let the user run it or approve it.
+    mode: ask

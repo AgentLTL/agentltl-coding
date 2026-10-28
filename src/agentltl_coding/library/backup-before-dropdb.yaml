@@ -1,0 +1,10 @@
+summary: Take a dump (pg_dump, mysqldump, mongodump) before every dropdb or mysqladmin drop; each drop needs its own.
+tags: [data, devops]
+rules:
+  - id: backup-before-dropdb
+    before:
+      first: [pg_dump, pg_dumpall, mysqldump, mongodump]
+      then: [dropdb, {tool: mysqladmin, with: {argv: drop}}]
+      since: [dropdb, {tool: mysqladmin, with: {argv: drop}}]
+    why: A dropped database cannot be got back from the server.
+    fix: Dump the database first (pg_dump, mysqldump or mongodump), then drop it. A second drop needs a second dump.

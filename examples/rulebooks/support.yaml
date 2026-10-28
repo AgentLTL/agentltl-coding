@@ -1,0 +1,42 @@
+# Template: customer support and refunds, for an agent whose tools come from an MCP server.
+#
+# Rename the tools to yours (here: the server `helpdesk`): mcp__helpdesk__lookup_customer,
+# get_ticket_history, get_order, reply, issue_refund, escalate_ticket, notify_customer,
+# close_ticket.
+
+rules:
+  - id: history-before-reply
+    before: {first: mcp__helpdesk__get_ticket_history, then: mcp__helpdesk__reply}
+    mode: retry
+    why: The ticket history is read before replying.
+    fix: Call get_ticket_history, then reply.
+
+  - id: customer-before-refund
+    before: {first: mcp__helpdesk__lookup_customer, then: mcp__helpdesk__issue_refund}
+    mode: retry
+    why: The customer is identified before a refund.
+    fix: Call lookup_customer first.
+
+  - id: order-before-refund
+    before:
+      first: mcp__helpdesk__get_order
+      then: mcp__helpdesk__issue_refund
+      since: mcp__helpdesk__issue_refund
+    why: Every refund refers to an order that was looked up.
+    fix: Call get_order for the order being refunded.
+
+  - id: one-refund-per-session
+    at_most: {call: mcp__helpdesk__issue_refund, times: 1}
+    why: At most one refund per ticket.
+    fix: A refund was already issued; escalate if the customer needs more.
+
+  - id: tell-the-customer-about-escalation
+    finally: {call: mcp__helpdesk__notify_customer, since: mcp__helpdesk__escalate_ticket}
+    why: The customer hears about an escalation.
+    fix: Call notify_customer about the escalation.
+
+  # Y(O(x)) = x happened strictly before this call: no call once the ticket is closed.
+  - id: nothing-after-close
+    ltl: 'G(!Y(O(now("mcp__helpdesk__close_ticket"))))'
+    why: Once the ticket is closed, no further action runs.
+    fix: The ticket is closed; give your final answer.

@@ -30,6 +30,30 @@ Four harnesses are built on it: the
 [Codex plugin](https://github.com/AgentLTL/agentltl-codex). The full rule
 reference is on [agentltl.github.io](https://agentltl.github.io/rules/).
 
+## Themes
+
+A theme is a bundle of library entries for one topic: `use: [theme-release-safety]` switches
+on all of it, and `agentltl library` lists what is in it. Each rule is as strict as its
+summary says (a gate holds for every action, not once per session), and tested.
+
+| Theme | Rules |
+|-------|-------|
+| `theme-release-safety` | tests before push, no force push, nothing pushed to main by name, `terraform plan` before every apply, ask before infrastructure changes, production targets and publishing |
+| `theme-data-safety` | the secrets rules, ask before data files leave the machine (scp, rsync, aws s3, curl, gists), a dump before every `dropdb` |
+| `theme-budget` | read before overwriting; limits on sub-agents (8), web searches (10) and tool calls (300) |
+| `theme-research` | search the project before the web, limit web searches |
+| `theme-human-in-the-loop` | ask before publishing, sending messages, deleting remote data, discarding work or deleting recursively |
+
+The limits are `warn` rules: the agent is refused once and may insist. Change a number or a
+mode by copying the entry's rule into your `AGENTLTL.yaml` with the same `id`. A rule in
+`ask` mode needs a person: in Codex, Copilot CLI and Vibe the call is refused once and the
+agent is told to ask you (and refused when nobody is there to ask); Vibe's sub-agents run
+no hooks, so rules cannot see what they do.
+
+Rules for agents with domain tools (payments, healthcare, procurement, support, privacy)
+cannot be packaged: their tool names are your MCP server's. [`examples/rulebooks/`](examples/rulebooks/)
+has a template for each, with placeholder `mcp__server__tool` names to rename.
+
 ## Installation
 
 Most people want a plugin for their agent, not this library: paste the prompt from the

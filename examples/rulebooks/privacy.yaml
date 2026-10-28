@@ -1,0 +1,61 @@
+# Template: personal data handling (GDPR), for an agent whose tools come from an MCP server.
+#
+# Rename the tools to yours (here: the server `data`): mcp__data__check_consent,
+# process_personal_data, anonymize, export_dataset (argument include_pii), transfer_data
+# (argument region), check_dpa, share_with_third_party, read_personal_record, log_access,
+# erasure_request, delete_personal_data.
+
+rules:
+  # Lawful basis (art. 6): every processing follows a consent check.
+  - id: consent-before-processing
+    before:
+      first: mcp__data__check_consent
+      then: mcp__data__process_personal_data
+      since: mcp__data__process_personal_data
+    mode: stop
+    why: Personal data is processed only after consent is checked.
+    fix: Call check_consent for this person first.
+
+  - id: anonymize-before-export
+    before:
+      first: mcp__data__anonymize
+      then: mcp__data__export_dataset
+      since: mcp__data__export_dataset
+    why: Datasets leave the system freshly anonymized.
+    fix: Call anonymize on the dataset, then export it.
+
+  # Data minimisation (art. 5). include_pii true, "true", 1 and any other non-empty value is refused.
+  - id: no-pii-in-export
+    never: {tool: mcp__data__export_dataset, with: {include_pii: true}}
+    why: Exports never include directly identifying fields.
+    fix: Export with include_pii=false.
+
+  # Transfers outside the EU (chapter V): only these regions are allowed; any other region, or
+  # none, is refused. Add your tool's region names.
+  - id: transfer-only-inside-the-eu
+    require:
+      tool: mcp__data__transfer_data
+      where: {region: [eu, EU, "eu-*", "EU-*", "europe-*", "Europe-*"]}
+    mode: stop
+    why: Personal data stays in the EU.
+    fix: Transfer to an EU region only, and name it in the region argument.
+
+  # Processor contract (art. 28).
+  - id: dpa-before-third-party
+    before:
+      first: mcp__data__check_dpa
+      then: mcp__data__share_with_third_party
+      since: mcp__data__share_with_third_party
+    why: Data is shared with a third party only under a checked processing agreement.
+    fix: Call check_dpa for this recipient before sharing.
+
+  - id: log-record-access
+    finally: {call: mcp__data__log_access, since: mcp__data__read_personal_record}
+    why: Every read of a personal record is logged.
+    fix: Call log_access for the records you read.
+
+  # Right to erasure (art. 17): a request received during the run is carried out before it ends.
+  - id: erasure-honoured
+    finally: {call: mcp__data__delete_personal_data, since: mcp__data__erasure_request}
+    why: An erasure request is carried out before the run ends.
+    fix: Call delete_personal_data for the person who asked for erasure.
