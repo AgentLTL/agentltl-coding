@@ -353,11 +353,14 @@ class Guard:
                result: Any, status: Optional[int] = None) -> None:
         """Add a call that has run to the session and project traces."""
         tool_name, tool_input = _harness().canonical(tool_name, tool_input)
-        tool_input = _trim(self._input(tool_name, tool_input))
+        tool_input = self._input(tool_name, tool_input)
         text = result if isinstance(result, str) else ("" if result is None else str(result))
         text = text[:_MAX_STRING]
         for enf in self.enforcers.values():
+            start = len(enf.trace)
             try:
+                # A command line is translated whole: cut short, it may no longer parse (an
+                # unclosed heredoc) and its calls would be lost.
                 enf.record_completed(tool_name, tool_input, tool_id, text, status=status)
             except TranslationError:
                 # an unparseable command the user let through: kept under the tool's own name
@@ -366,6 +369,10 @@ class Guard:
                 if status is not None:
                     entry["status"] = status
                 enf.record_entry(entry)
+            for entry in enf.trace[start:]:          # what is kept is trimmed
+                entry["arguments"] = _trim(entry.get("arguments") or {})
+                if "cli" in entry:
+                    entry["cli"] = _trim(entry["cli"])
 
     # ── messages ──────────────────────────────────────────────────────────────
 
