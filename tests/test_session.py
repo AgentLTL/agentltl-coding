@@ -42,6 +42,65 @@ def test_a_stop_holds_until_the_user_writes(tmp_path):
     assert _session(root).pre("Bash", {"command": "ls"}).action == "none"
 
 
+REVIEW_ASKED = ("rules: [{id: review-loaded, finally: {call: {tool: Skill, with: {skill: review}}, "
+              "since: {tool: UserPrompt, where: {prompt: '*/review*'}}}}]")
+
+
+def _prompts(state):
+    return [c["arguments"]["prompt"] for c in state.get("completed_tool_calls", [])
+            if c["tool_name"] == "UserPrompt"]
+
+
+def test_a_rule_can_react_to_what_the_user_asked(tmp_path):
+    root = _project(tmp_path, REVIEW_ASKED)
+    _session(root).prompt("hello")
+    assert _session(root).finish().action == "none"       # nothing asked for yet
+    _session(root).prompt("please run /review on the docs")
+    blocked = _session(root).finish()
+    assert blocked.action == "block" and "review-loaded" in blocked.reason
+    _session(root).post("Skill", {"skill": "review"}, "1", "", status=0)
+    assert _session(root).finish().action == "none"
+    _session(root).prompt("and /review again, please")      # a new request needs a new load
+    assert _session(root).finish().action == "block"
+
+
+def test_prompts_are_recorded_whole_in_both_traces(tmp_path):
+    root = _project(tmp_path, REVIEW_ASKED)
+    text = "x" * 5000 + " /review"
+    _session(root).prompt(text)
+    assert _prompts(store.read("s1")) == [text]
+    assert _prompts(store.read_project(root)) == [text]
+    assert "decisions" not in store.read("s1")
+    assert _session(root).finish().action == "block"      # the request past 2000 characters
+
+
+def test_only_prompts_a_rule_is_about_are_recorded(tmp_path):
+    root = _project(tmp_path, "rules: [{id: n, at_most: {call: '*', times: 1}}, "
+                              "{id: f, finally: {call: pytest, since: '*'}}]")
+    _session(root).prompt("my secret plans")              # no rule names UserPrompt
+    assert _prompts(store.read("s1")) == [] and _prompts(store.read_project(root)) == []
+    assert _session(root).finish().action == "none"
+    assert _session(root).pre("Bash", {"command": "ls"}).action == "none"
+    (tmp_path / "AGENTLTL.yaml").write_text(REVIEW_ASKED)
+    _session(root).prompt("my secret plans")              # the rule is not about this one
+    _session(root).prompt("then /review them")
+    assert _prompts(store.read("s1")) == ["then /review them"]
+
+
+def test_prompt_without_text_or_with_a_broken_rule_file_still_lifts_a_stop(tmp_path):
+    root = _project(tmp_path, "rules: [{id: env, never: {tool: cat, where: {'*': '*.env'}}, "
+                              "mode: stop}, {id: p, never: UserPrompt}]")
+    for text in (None, "", 42, "go on"):
+        assert _session(root).pre("Bash", {"command": "cat .env"}).action == "stop"
+        _session(root).prompt(text)
+        assert _session(root).pre("Bash", {"command": "ls"}).action == "none"
+    assert _prompts(store.read("s1")) == ["go on"]        # recorded, never refused
+    _session(root).pre("Bash", {"command": "cat .env"})
+    (tmp_path / "AGENTLTL.yaml").write_text("rules: [{id: broken")
+    _session(root).prompt("go on")
+    assert "stopped" not in store.read("s1")
+
+
 def test_finally_rules_send_the_agent_back(tmp_path):
     root = _project(tmp_path, "rules: [{id: tested, finally: pytest}]")
     assert _session(root).finish().action == "block"

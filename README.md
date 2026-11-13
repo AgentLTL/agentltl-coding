@@ -90,7 +90,8 @@ if s.files:                                      # an AGENTLTL.yaml applies here
     ...
     s.post("shell", {"cmd": "pytest"}, call_id, output, status=0)   # after it ran
     s.finish()          # the agent wants to stop: "block" while a `finally` rule is unmet
-    s.prompt()          # the user wrote: lift a `stop`
+    s.prompt(text)      # the user wrote: lift a `stop`; recorded as a `UserPrompt {prompt}`
+                        # call when a rule's `UserPrompt` target matches it
 ```
 
 `Harness` says what differs between agents:

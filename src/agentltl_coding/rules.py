@@ -172,6 +172,18 @@ class RuleSet:
     def get(self, rule_id: str) -> Optional[Rule]:
         return next((r for r in self.rules if r.id == rule_id), None)
 
+    def wants(self, tool: str, args: Dict[str, Any], paths: Paths) -> bool:
+        """Whether a rule is about this call: one of its targets names *tool* itself (a glob
+        does not count) and may match *args*, or an ``ltl``/``formula`` rule names *tool*."""
+        for r in self.rules:
+            if r.kind in ("ltl", "formula"):
+                if tool in r.tools:
+                    return True
+            elif any(tool in t.tools and t.match(tool, args, paths) is not False
+                     for t in r.targets):
+                return True
+        return False
+
     def scoped(self, scope: Optional[str]) -> List[Rule]:
         return [r for r in self.rules if scope is None or r.scope == scope]
 
@@ -890,10 +902,12 @@ def _tools_in(formula: Any) -> set:
             out |= _tools_in(f)
         return out
     if not dataclasses.is_dataclass(formula):
-        return out
+        tools = getattr(formula, "tools", None)        # a call pattern (Matches(ToolPattern))
+        return {t for t in tools if isinstance(t, str)} if isinstance(tools, tuple) else out
     for f in dataclasses.fields(formula):
         value = getattr(formula, f.name)
-        if f.name in ("tool", "a", "b", "tool_a", "tool_b", "target", "tools") and value:
+        if f.name in ("tool", "a", "b", "tool_a", "tool_b", "target", "tools", "correct_tool",
+                      "wrong_tool") and value:
             out |= {value} if isinstance(value, str) else {v for v in value if isinstance(v, str)}
         else:
             out |= _tools_in(value)

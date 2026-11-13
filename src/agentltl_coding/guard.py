@@ -34,6 +34,8 @@ from .harness import current as _harness
 from .pattern import PATH_KEYS, Paths, normalize_paths
 from .rules import MODES, SCOPES, Rule, RuleSet
 
+# What the user wrote, as harnesses record it (Session.prompt): a call rules can name
+PROMPT_TOOL = "UserPrompt"
 _MAX_TRACE = 5000
 _MAX_LOG = 200
 _MAX_STRING = 2000
@@ -367,6 +369,13 @@ class Guard:
                     entry["status"] = status
                 enf.record_entry(entry)
 
+    def record_prompt(self, text: str) -> None:
+        """Add what the user wrote to the session and project traces, as a call to
+        ``UserPrompt`` with the argument ``prompt``. Kept whole, not trimmed like a tool's
+        arguments, so a rule sees all of it."""
+        for enf in self.enforcers.values():
+            enf.record_completed(PROMPT_TOOL, {"prompt": text}, "", "")
+
     # ── messages ──────────────────────────────────────────────────────────────
 
     def _unparseable(self, command: str, exc: Exception, auto: bool) -> Verdict:
@@ -458,4 +467,4 @@ def _trim(value: Any) -> Any:
     return value
 
 
-__all__ = ["Guard", "Verdict", "is_auto", "lint", "translator_for", "MODES"]
+__all__ = ["Guard", "Verdict", "is_auto", "lint", "translator_for", "MODES", "PROMPT_TOOL"]
