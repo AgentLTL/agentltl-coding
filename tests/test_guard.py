@@ -121,6 +121,15 @@ def test_large_inputs_are_trimmed_in_the_trace():
     assert len(g.trace[-1]["result"]) == 2000
 
 
+def test_a_long_command_line_is_recorded_as_the_calls_it_runs():
+    g = guard_for("rules: [{id: tested, finally: pytest}]")
+    line = "cat > notes.md <<'EOF'\n" + "x\n" * 1500 + "EOF\npytest -q"
+    assert len(line) > 2000 and run(g, line) == ["none"]
+    assert [c["tool_name"] for c in g.trace] == ["cat", "pytest"]
+    assert g.finish().action == "none"
+    assert all(len(json.dumps(c)) < 6000 for c in g.trace)       # still trimmed
+
+
 class TestMemoryScopes:
     RULES = """
 rules:
