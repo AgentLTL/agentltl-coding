@@ -7,7 +7,7 @@ and the result into its answer::
 
     s = Session(cwd, project, session_id)
     if not s.files: ...                       # no AGENTLTL.yaml: stay out of the way
-    s.prompt()                                # the user wrote: lift a stop, new turn
+    s.prompt("run the tests")                 # the user wrote: lift a stop, new turn
     s.start()                                 # the reminder of the rules, or None
     s.pre("Bash", {"command": "git push"}, auto=False)    # a Verdict
     s.post("Bash", {...}, "id", output, status=0)         # (user notice, agent note) or None
@@ -24,10 +24,10 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from . import store
-from .guard import Guard, Verdict
+from .guard import PROMPT_TOOL, Guard, Verdict
 from .harness import current as _harness
 from .pattern import Paths
-from .rules import RuleSet, load, rule_files
+from .rules import RuleFileError, RuleSet, load, rule_files
 
 STILL_STOPPED = (
     "[AGENTLTL] Rule '{rule}' stopped this session: every tool call is refused until the user "
@@ -53,14 +53,32 @@ class Session:
 
     # ── events ────────────────────────────────────────────────────────────────
 
-    def prompt(self) -> None:
+    def prompt(self, text: Optional[str] = None) -> None:
         """The user wrote: lift a stop (even if the rule file has since become unreadable),
-        and let ``finally`` rules send the agent back again in this new turn."""
+        and let ``finally`` rules send the agent back again in this new turn.
+
+        *text* is the prompt as the harness reports it. When a rule is about it (a target
+        naming the ``UserPrompt`` tool matches ``{prompt: text}``), it is also recorded, whole,
+        as a ``UserPrompt {prompt: text}`` call, so rules can react to what was asked::
+
+            finally: {call: {tool: Skill, with: {skill: review}},
+                      since: {tool: UserPrompt, where: {prompt: "*/review*"}}}
+
+        Other prompts are not recorded: they stay out of the saved state."""
         with store.locked(self.sid) as state:
             state.pop("stopped", None)
             state["termination_nudges"] = 0
         with store.locked_project(self.project) as project_state:
             project_state["termination_nudges"] = 0
+        if not isinstance(text, str) or not text:
+            return
+        try:
+            if not self.ruleset.wants(PROMPT_TOOL, {"prompt": text},
+                                      Paths(self.cwd, self.project)):
+                return
+        except RuleFileError:       # a broken rule file: the stop is lifted, nothing to record
+            return
+        self._with_guard(lambda guard, state: guard.record_prompt(text))
 
     def start(self) -> Optional[str]:
         """What to tell the agent at the start of a session (None: settings.announce off)."""

@@ -94,6 +94,17 @@ class TestValidation:
                    "{type: Called, args: {tool: rm}}}}}]")
         assert str(rs.rules[0].formula) == '!(called("rm"))'
 
+    def test_tools_named_in_formulas(self):
+        from agentltl import BranchCalled, Matches, ToolPattern
+
+        from agentltl_coding.rules import _tools_in
+        assert _tools_in(BranchCalled(correct_tool="Skill", wrong_tool="UserPrompt")) == {
+            "Skill", "UserPrompt"}
+        assert _tools_in(Matches(ToolPattern("UserPrompt", {"prompt": "x"}))) == {"UserPrompt"}
+        rs = loads("rules: [{id: x, formula: {type: Not, args: {operand: "
+                   "{type: BranchCalled, args: {correct_tool: UserPrompt}}}}}]")
+        assert rs.wants("UserPrompt", {"prompt": "anything"}, P)
+
     def test_lint_flags_names_nothing_produces(self):
         rs = loads("""
 rules:
